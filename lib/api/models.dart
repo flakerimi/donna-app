@@ -164,6 +164,21 @@ class TaskItem {
       );
 }
 
+/// One integration's live status (Settings → Connectors).
+class ConnectorInfo {
+  final String name;
+  final bool connected;
+  final String detail;
+  const ConnectorInfo(
+      {required this.name, required this.connected, required this.detail});
+
+  factory ConnectorInfo.fromJson(Map<String, dynamic> j) => ConnectorInfo(
+        name: j['name'] as String? ?? '',
+        connected: j['connected'] as bool? ?? false,
+        detail: j['detail'] as String? ?? '',
+      );
+}
+
 /// An image attached to an outgoing chat turn.
 class ChatImage {
   final String mediaType; // image/jpeg, image/png, …

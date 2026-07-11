@@ -86,6 +86,18 @@ void main() {
             ..statusCode = 201
             ..write(jsonEncode(
                 {'id': 't2', 'prompt': 'new job', 'status': 'queued'}));
+        case 'GET /v1/connectors':
+          req.response.write(jsonEncode({
+            'profile': 'personal',
+            'connectors': [
+              {'name': 'google', 'connected': true, 'detail': 'calendar + gmail'},
+            ],
+          }));
+        case 'POST /v1/connectors/google/connect':
+          req.response.write(jsonEncode({
+            'profile': 'personal',
+            'url': 'https://accounts.google.com/o/oauth2/v2/auth?state=abc',
+          }));
         case 'POST /v1/push/register':
           lastChatBody = await utf8.decodeStream(req);
           req.response.write(
@@ -177,6 +189,14 @@ void main() {
     expect(sent['message'], 'hi');
     expect((sent['images'] as List).single,
         {'media_type': 'image/png', 'data': 'aGk='});
+  });
+
+  test('connectors status and google connect url', () async {
+    final list = await client.connectors(profile: 'personal');
+    expect(list.single.name, 'google');
+    expect(list.single.connected, isTrue);
+    final url = await client.googleConnectUrl(profile: 'personal');
+    expect(url, contains('accounts.google.com'));
   });
 
   test('push registration posts token, platform, profile', () async {

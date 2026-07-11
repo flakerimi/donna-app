@@ -99,6 +99,29 @@ class HarnessClient {
   Future<TaskItem> taskShow(String id) async =>
       TaskItem.fromJson(await _getJson('/v1/tasks/$id'));
 
+  /// GET /v1/connectors — live integration status for the settings page.
+  Future<List<ConnectorInfo>> connectors({String? profile}) async {
+    final j = await _getJson('/v1/connectors',
+        query: {if (profile != null && profile.isNotEmpty) 'profile': profile});
+    return [
+      for (final c in (j['connectors'] as List? ?? []))
+        ConnectorInfo.fromJson(c as Map<String, dynamic>)
+    ];
+  }
+
+  /// POST /v1/connectors/google/connect — mint a consent URL for the browser;
+  /// the server's public callback finishes the connect.
+  Future<String> googleConnectUrl({String? profile}) async {
+    final res = await _http.post(
+      _u('/v1/connectors/google/connect'),
+      headers: {..._auth, 'Content-Type': 'application/json'},
+      body: jsonEncode(
+          {if (profile != null && profile.isNotEmpty) 'profile': profile}),
+    );
+    final j = jsonDecode(_check(res)) as Map<String, dynamic>;
+    return j['url'] as String? ?? '';
+  }
+
   /// POST /v1/push/register — bind this device's APNs token to an identity so
   /// scheduled deliveries targeted `push:<profile>` reach it.
   Future<void> registerPush({required String token, String? profile}) async {
