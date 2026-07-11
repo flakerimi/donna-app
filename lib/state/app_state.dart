@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../api/harness_client.dart';
+import '../config.dart';
 
 class AppState extends ChangeNotifier {
   static const _kUrl = 'server_url';
@@ -22,15 +23,26 @@ class AppState extends ChangeNotifier {
   bool get connected => client != null;
 
   Future<void> load() async {
-    final prefs = await SharedPreferences.getInstance();
-    serverUrl = prefs.getString(_kUrl) ?? '';
-    token = prefs.getString(_kToken) ?? '';
-    profile = prefs.getString(_kProfile) ?? '';
-    if (serverUrl.isNotEmpty) {
-      client = HarnessClient(baseUrl: serverUrl, token: token);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      serverUrl = prefs.getString(_kUrl) ?? '';
+      token = prefs.getString(_kToken) ?? '';
+      profile = prefs.getString(_kProfile) ?? '';
+      // No stored pairing → fall back to the build's baked-in server, so a
+      // fresh install lands straight in chat. Disconnect returns here too.
+      if (serverUrl.isEmpty && kDefaultServerUrl.isNotEmpty) {
+        serverUrl = kDefaultServerUrl;
+        token = kDefaultApiToken;
+        if (profile.isEmpty) profile = kDefaultProfile;
+      }
+      if (serverUrl.isNotEmpty) {
+        client = HarnessClient(baseUrl: serverUrl, token: token);
+      }
+    } finally {
+      // Fail open to the connect screen — never strand the app on a spinner.
+      loaded = true;
+      notifyListeners();
     }
-    loaded = true;
-    notifyListeners();
   }
 
   Future<void> connect(

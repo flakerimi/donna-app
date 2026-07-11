@@ -5,6 +5,7 @@ import 'screens/home_shell.dart';
 import 'state/app_state.dart';
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
   runApp(HarnessApp(state: AppState()..load()));
 }
 
