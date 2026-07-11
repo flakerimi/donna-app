@@ -26,6 +26,10 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>Donna uses the camera to capture receipts and anything else you want her to see.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Donna attaches photos you choose to your conversation.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
