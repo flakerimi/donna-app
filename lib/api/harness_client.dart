@@ -99,6 +99,21 @@ class HarnessClient {
   Future<TaskItem> taskShow(String id) async =>
       TaskItem.fromJson(await _getJson('/v1/tasks/$id'));
 
+  /// POST /v1/push/register — bind this device's APNs token to an identity so
+  /// scheduled deliveries targeted `push:<profile>` reach it.
+  Future<void> registerPush({required String token, String? profile}) async {
+    final res = await _http.post(
+      _u('/v1/push/register'),
+      headers: {..._auth, 'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'token': token,
+        'platform': 'ios',
+        if (profile != null && profile.isNotEmpty) 'profile': profile,
+      }),
+    );
+    _check(res);
+  }
+
   /// POST /v1/chat — streams the turn as parsed [ChatEvent]s. The stream ends
   /// after the server's `done` frame (or errors on a non-200 response).
   Stream<ChatEvent> chat({

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../main.dart';
+import '../push/push_service.dart';
 import 'chat_screen.dart';
 import 'sessions_screen.dart';
 import 'settings_screen.dart';
@@ -15,6 +17,15 @@ class HomeShell extends StatefulWidget {
 
 class _HomeShellState extends State<HomeShell> {
   int _index = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    // Connected → offer push registration (no-op off iOS or if declined).
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) PushService.init(AppScope.of(context));
+    });
+  }
 
   @override
   Widget build(BuildContext context) {

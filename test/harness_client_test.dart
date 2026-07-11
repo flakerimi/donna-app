@@ -86,6 +86,10 @@ void main() {
             ..statusCode = 201
             ..write(jsonEncode(
                 {'id': 't2', 'prompt': 'new job', 'status': 'queued'}));
+        case 'POST /v1/push/register':
+          lastChatBody = await utf8.decodeStream(req);
+          req.response.write(
+              jsonEncode({'profile': 'personal', 'status': 'registered'}));
         case 'POST /v1/chat':
           lastChatBody = await utf8.decodeStream(req);
           req.response.headers.contentType =
@@ -173,6 +177,12 @@ void main() {
     expect(sent['message'], 'hi');
     expect((sent['images'] as List).single,
         {'media_type': 'image/png', 'data': 'aGk='});
+  });
+
+  test('push registration posts token, platform, profile', () async {
+    await client.registerPush(token: 'devtok', profile: 'personal');
+    final sent = jsonDecode(lastChatBody!) as Map<String, dynamic>;
+    expect(sent, {'token': 'devtok', 'platform': 'ios', 'profile': 'personal'});
   });
 
   test('non-200 chat surfaces the server error', () async {
