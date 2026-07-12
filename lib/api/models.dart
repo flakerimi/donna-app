@@ -164,6 +164,38 @@ class TaskItem {
       );
 }
 
+/// One delivered message in the identity's inbox (scheduled runs, task
+/// results) — the durable record behind the push banner.
+class DeliveryItem {
+  final String id;
+  final String text;
+  final DateTime? created;
+  final bool read;
+  const DeliveryItem(
+      {required this.id, required this.text, this.created, required this.read});
+
+  factory DeliveryItem.fromJson(Map<String, dynamic> j) => DeliveryItem(
+        id: j['id'] as String? ?? '',
+        text: j['text'] as String? ?? '',
+        created: DateTime.tryParse(j['created'] as String? ?? ''),
+        read: j['read'] as bool? ?? false,
+      );
+}
+
+class DeliveriesPage {
+  final int unread;
+  final List<DeliveryItem> items;
+  const DeliveriesPage({required this.unread, required this.items});
+
+  factory DeliveriesPage.fromJson(Map<String, dynamic> j) => DeliveriesPage(
+        unread: (j['unread'] as num? ?? 0).toInt(),
+        items: [
+          for (final it in (j['items'] as List? ?? []))
+            DeliveryItem.fromJson(it as Map<String, dynamic>)
+        ],
+      );
+}
+
 /// One integration's live status (Settings → Connectors).
 class ConnectorInfo {
   final String name;

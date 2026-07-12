@@ -86,6 +86,21 @@ void main() {
             ..statusCode = 201
             ..write(jsonEncode(
                 {'id': 't2', 'prompt': 'new job', 'status': 'queued'}));
+        case 'GET /v1/deliveries':
+          req.response.write(jsonEncode({
+            'profile': 'personal',
+            'unread': 1,
+            'items': [
+              {'id': 'd2', 'text': '**Morning brief**', 'read': false, 'created': '2026-07-12T08:30:00+02:00'},
+              {'id': 'd1', 'text': 'old digest', 'read': true, 'created': '2026-07-11T18:00:00+02:00'},
+            ],
+          }));
+        case 'POST /v1/deliveries/read':
+          lastChatBody = await utf8.decodeStream(req);
+          req.response.write(jsonEncode({'status': 'ok'}));
+        case 'POST /v1/feedback':
+          lastChatBody = await utf8.decodeStream(req);
+          req.response.write(jsonEncode({'status': 'saved'}));
         case 'GET /v1/connectors':
           req.response.write(jsonEncode({
             'profile': 'personal',
@@ -189,6 +204,20 @@ void main() {
     expect(sent['message'], 'hi');
     expect((sent['images'] as List).single,
         {'media_type': 'image/png', 'data': 'aGk='});
+  });
+
+  test('deliveries feed, read markers, feedback lesson', () async {
+    final page = await client.deliveries(profile: 'personal');
+    expect(page.unread, 1);
+    expect(page.items.first.text, contains('Morning brief'));
+    expect(page.items.first.read, isFalse);
+
+    await client.markDeliveriesRead(ids: ['d2'], profile: 'personal');
+    expect(jsonDecode(lastChatBody!), {'ids': ['d2'], 'profile': 'personal'});
+
+    await client.sendFeedback(lesson: 'never bury the verdict', profile: 'personal');
+    expect(jsonDecode(lastChatBody!),
+        {'lesson': 'never bury the verdict', 'profile': 'personal'});
   });
 
   test('connectors status and google connect url', () async {

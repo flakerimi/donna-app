@@ -226,6 +226,48 @@ class _ChatScreenState extends State<ChatScreen> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
+  /// 👍 acknowledges; 👎 captures a correction that becomes a durable lesson —
+  /// the same self-improvement loop the Telegram buttons ran.
+  Future<void> _feedback(bool up) async {
+    if (up) {
+      _toast('Noted 👍');
+      return;
+    }
+    final controller = TextEditingController();
+    final lesson = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('What should she have done?'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          minLines: 2,
+          maxLines: 5,
+          decoration: const InputDecoration(
+            hintText: 'Your correction becomes a lesson she remembers.',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => Navigator.pop(context, controller.text.trim()),
+              child: const Text('Save lesson')),
+        ],
+      ),
+    );
+    if (lesson == null || lesson.isEmpty || !mounted) return;
+    final state = AppScope.of(context);
+    try {
+      await state.client!.sendFeedback(lesson: lesson, profile: state.profile);
+      _toast("Lesson saved — she'll apply it next time.");
+    } catch (e) {
+      _toast('Could not save lesson: $e');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = AppScope.of(context);
@@ -296,7 +338,8 @@ class _ChatScreenState extends State<ChatScreen> {
                     controller: _scroll,
                     padding: const EdgeInsets.all(12),
                     itemCount: _messages.length,
-                    itemBuilder: (_, i) => _MessageBubble(msg: _messages[i]),
+                    itemBuilder: (_, i) => _MessageBubble(
+                        msg: _messages[i], onFeedback: _feedback),
                   ),
           ),
           if (_pending.isNotEmpty)
@@ -367,7 +410,8 @@ class _ChatScreenState extends State<ChatScreen> {
 
 class _MessageBubble extends StatelessWidget {
   final _Msg msg;
-  const _MessageBubble({required this.msg});
+  final Future<void> Function(bool up)? onFeedback;
+  const _MessageBubble({required this.msg, this.onFeedback});
 
   @override
   Widget build(BuildContext context) {
@@ -427,14 +471,34 @@ class _MessageBubble extends StatelessWidget {
                     height: 16,
                     child: CircularProgressIndicator(strokeWidth: 2)),
               ),
-            if (!isUser && msg.model.isNotEmpty && !msg.streaming)
+            if (!isUser && !msg.streaming && msg.text.isNotEmpty)
               Padding(
-                padding: const EdgeInsets.only(top: 4),
-                child: Text(msg.model,
-                    style: Theme.of(context)
-                        .textTheme
-                        .labelSmall
-                        ?.copyWith(color: scheme.outline)),
+                padding: const EdgeInsets.only(top: 2),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (msg.model.isNotEmpty)
+                      Text(msg.model,
+                          style: Theme.of(context)
+                              .textTheme
+                              .labelSmall
+                              ?.copyWith(color: scheme.outline)),
+                    if (!msg.isError && onFeedback != null) ...[
+                      const SizedBox(width: 8),
+                      InkWell(
+                        onTap: () => onFeedback!(true),
+                        child: Icon(Icons.thumb_up_outlined,
+                            size: 14, color: scheme.outline),
+                      ),
+                      const SizedBox(width: 10),
+                      InkWell(
+                        onTap: () => onFeedback!(false),
+                        child: Icon(Icons.thumb_down_outlined,
+                            size: 14, color: scheme.outline),
+                      ),
+                    ],
+                  ],
+                ),
               ),
           ],
         ),

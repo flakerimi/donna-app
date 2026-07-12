@@ -99,6 +99,38 @@ class HarnessClient {
   Future<TaskItem> taskShow(String id) async =>
       TaskItem.fromJson(await _getJson('/v1/tasks/$id'));
 
+  /// GET /v1/deliveries — the identity's delivery feed, newest first.
+  Future<DeliveriesPage> deliveries({String? profile}) async =>
+      DeliveriesPage.fromJson(await _getJson('/v1/deliveries',
+          query: {if (profile != null && profile.isNotEmpty) 'profile': profile}));
+
+  /// POST /v1/deliveries/read — mark ids read; empty marks everything.
+  Future<void> markDeliveriesRead(
+      {List<String> ids = const [], String? profile}) async {
+    final res = await _http.post(
+      _u('/v1/deliveries/read'),
+      headers: {..._auth, 'Content-Type': 'application/json'},
+      body: jsonEncode({
+        if (ids.isNotEmpty) 'ids': ids,
+        if (profile != null && profile.isNotEmpty) 'profile': profile,
+      }),
+    );
+    _check(res);
+  }
+
+  /// POST /v1/feedback — a 👎 correction becomes a durable lesson.
+  Future<void> sendFeedback({required String lesson, String? profile}) async {
+    final res = await _http.post(
+      _u('/v1/feedback'),
+      headers: {..._auth, 'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'lesson': lesson,
+        if (profile != null && profile.isNotEmpty) 'profile': profile,
+      }),
+    );
+    _check(res);
+  }
+
   /// GET /v1/connectors — live integration status for the settings page.
   Future<List<ConnectorInfo>> connectors({String? profile}) async {
     final j = await _getJson('/v1/connectors',
