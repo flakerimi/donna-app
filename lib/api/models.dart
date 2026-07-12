@@ -57,10 +57,24 @@ class ProviderModels {
 class SessionMeta {
   final String id;
   final int turns;
-  const SessionMeta({required this.id, required this.turns});
+  final String title; // opening user message, server-clipped
+  final String preview; // latest text either side wrote
+  final DateTime? updated;
+  const SessionMeta({
+    required this.id,
+    required this.turns,
+    this.title = '',
+    this.preview = '',
+    this.updated,
+  });
 
-  factory SessionMeta.fromJson(Map<String, dynamic> j) =>
-      SessionMeta(id: j['id'] as String? ?? '', turns: (j['turns'] as num? ?? 0).toInt());
+  factory SessionMeta.fromJson(Map<String, dynamic> j) => SessionMeta(
+        id: j['id'] as String? ?? '',
+        turns: (j['turns'] as num? ?? 0).toInt(),
+        title: j['title'] as String? ?? '',
+        preview: j['preview'] as String? ?? '',
+        updated: DateTime.tryParse(j['updated'] as String? ?? ''),
+      );
 }
 
 /// One block of a persisted history message (Go-marshaled provider.Block).

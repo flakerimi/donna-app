@@ -64,6 +64,17 @@ class HarnessClient {
     ];
   }
 
+  /// DELETE /v1/sessions/{id} — remove a conversation.
+  Future<void> deleteSession(String id, {String? profile}) async {
+    final req = http.Request(
+        'DELETE',
+        _u('/v1/sessions/$id',
+            {if (profile != null && profile.isNotEmpty) 'profile': profile}))
+      ..headers.addAll(_auth);
+    final res = await http.Response.fromStream(await _http.send(req));
+    _check(res);
+  }
+
   Future<SessionHistory> sessionHistory(String id, {String? profile}) async =>
       SessionHistory.fromJson(await _getJson('/v1/sessions/$id',
           query: {if (profile != null && profile.isNotEmpty) 'profile': profile}));

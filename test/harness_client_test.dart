@@ -50,9 +50,17 @@ void main() {
           req.response.write(jsonEncode({
             'profile': 'personal',
             'sessions': [
-              {'id': 'app', 'turns': 3}
+              {
+                'id': 'app',
+                'turns': 3,
+                'title': 'plan my CBRE week',
+                'preview': 'Done — calendar updated.',
+                'updated': '2026-07-12T08:00:00+02:00',
+              }
             ],
           }));
+        case 'DELETE /v1/sessions/app':
+          req.response.write(jsonEncode({'status': 'deleted'}));
         case 'GET /v1/sessions/app':
           req.response.write(jsonEncode({
             'profile': 'personal',
@@ -170,6 +178,9 @@ void main() {
   test('sessions and history parse Go-marshaled blocks', () async {
     final list = await client.sessions(profile: 'personal');
     expect(list.single.id, 'app');
+    expect(list.single.title, 'plan my CBRE week');
+    expect(list.single.preview, contains('calendar updated'));
+    await client.deleteSession('app', profile: 'personal'); // 200 = no throw
     final h = await client.sessionHistory('app', profile: 'personal');
     expect(h.provider, 'kimi');
     expect(h.messages.first.text, 'what is this');

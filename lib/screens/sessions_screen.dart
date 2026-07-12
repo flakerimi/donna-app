@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 
 import '../api/models.dart';
 import '../main.dart';
 import 'chat_screen.dart';
 
-/// Every persisted conversation for the active identity; tap to read, or
-/// continue one in a live chat.
+/// Conversations, Claude-app style: newest first, auto-titled by the opening
+/// message, last-message preview, relative time. Tap to continue, swipe to
+/// delete, + for a fresh chat.
 class SessionsScreen extends StatefulWidget {
   const SessionsScreen({super.key});
 
@@ -21,7 +21,7 @@ class _SessionsScreenState extends State<SessionsScreen> {
   @override
   void initState() {
     super.initState();
-    _refresh();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _refresh());
   }
 
   Future<void> _refresh() async {
@@ -30,7 +30,7 @@ class _SessionsScreenState extends State<SessionsScreen> {
       final list = await state.client!.sessions(profile: state.profile);
       if (mounted) {
         setState(() {
-          _sessions = list.reversed.toList(); // newest first
+          _sessions = list; // server sends newest first
           _error = null;
         });
       }
@@ -39,14 +39,71 @@ class _SessionsScreenState extends State<SessionsScreen> {
     }
   }
 
+  Future<void> _open(String sessionId) async {
+    await Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => ChatScreen(sessionId: sessionId)));
+    _refresh(); // the conversation likely grew
+  }
+
+  Future<bool> _confirmDelete(SessionMeta s) async {
+    final sure = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete conversation?'),
+        content: Text(s.title.isEmpty ? s.id : s.title),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Delete')),
+        ],
+      ),
+    );
+    return sure ?? false;
+  }
+
+  Future<void> _delete(SessionMeta s) async {
+    final state = AppScope.of(context);
+    try {
+      await state.client!.deleteSession(s.id, profile: state.profile);
+      setState(() => _sessions?.removeWhere((x) => x.id == s.id));
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Delete failed: $e')));
+        _refresh();
+      }
+    }
+  }
+
+  static String _relative(DateTime? t) {
+    if (t == null) return '';
+    final d = DateTime.now().difference(t.toLocal());
+    if (d.inMinutes < 1) return 'now';
+    if (d.inMinutes < 60) return '${d.inMinutes}m';
+    if (d.inHours < 24) return '${d.inHours}h';
+    if (d.inDays < 7) return '${d.inDays}d';
+    final local = t.toLocal();
+    return '${local.day}/${local.month}';
+  }
+
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Sessions'),
+        title: const Text('Chats'),
         actions: [
           IconButton(icon: const Icon(Icons.refresh), onPressed: _refresh),
         ],
+      ),
+      floatingActionButton: FloatingActionButton(
+        tooltip: 'New chat',
+        onPressed: () =>
+            _open('app-${DateTime.now().millisecondsSinceEpoch}'),
+        child: const Icon(Icons.add_comment_outlined),
       ),
       body: RefreshIndicator(
         onRefresh: _refresh,
@@ -60,105 +117,56 @@ class _SessionsScreenState extends State<SessionsScreen> {
                     ? ListView(children: const [
                         Padding(
                             padding: EdgeInsets.all(24),
-                            child: Text('No sessions yet.'))
+                            child: Text('No conversations yet — start one with +.'))
                       ])
                     : ListView.separated(
                         itemCount: _sessions!.length,
-                        separatorBuilder: (_, _) => const Divider(height: 1),
-                        itemBuilder: (_, i) {
+                        separatorBuilder: (_, _) =>
+                            const Divider(height: 1, indent: 72),
+                        itemBuilder: (context, i) {
                           final s = _sessions![i];
-                          return ListTile(
-                            leading: const Icon(Icons.forum_outlined),
-                            title: Text(s.id),
-                            subtitle: Text('${s.turns} turns'),
-                            trailing: IconButton(
-                              icon: const Icon(Icons.chat_bubble_outline),
-                              tooltip: 'Continue this session',
-                              onPressed: () => Navigator.of(context).push(
-                                MaterialPageRoute(
-                                    builder: (_) =>
-                                        ChatScreen(sessionId: s.id)),
-                              ),
+                          return Dismissible(
+                            key: ValueKey(s.id),
+                            direction: DismissDirection.endToStart,
+                            confirmDismiss: (_) => _confirmDelete(s),
+                            onDismissed: (_) => _delete(s),
+                            background: Container(
+                              color: scheme.errorContainer,
+                              alignment: Alignment.centerRight,
+                              padding: const EdgeInsets.only(right: 24),
+                              child: Icon(Icons.delete_outline,
+                                  color: scheme.onErrorContainer),
                             ),
-                            onTap: () => Navigator.of(context).push(
-                              MaterialPageRoute(
-                                  builder: (_) =>
-                                      _HistoryScreen(sessionId: s.id)),
+                            child: ListTile(
+                              leading: CircleAvatar(
+                                backgroundColor: scheme.primaryContainer,
+                                child: Icon(Icons.chat_bubble_outline,
+                                    size: 18, color: scheme.onPrimaryContainer),
+                              ),
+                              title: Text(
+                                s.title.isEmpty ? s.id : s.title,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w600),
+                              ),
+                              subtitle: Text(
+                                s.preview.isEmpty
+                                    ? '${s.turns} turns'
+                                    : s.preview,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              trailing: Text(_relative(s.updated),
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .labelSmall
+                                      ?.copyWith(color: scheme.outline)),
+                              onTap: () => _open(s.id),
                             ),
                           );
                         },
                       ),
-      ),
-    );
-  }
-}
-
-class _HistoryScreen extends StatelessWidget {
-  final String sessionId;
-  const _HistoryScreen({required this.sessionId});
-
-  @override
-  Widget build(BuildContext context) {
-    final state = AppScope.of(context);
-    return Scaffold(
-      appBar: AppBar(title: Text(sessionId)),
-      body: FutureBuilder<SessionHistory>(
-        future: state.client!.sessionHistory(sessionId, profile: state.profile),
-        builder: (context, snap) {
-          if (snap.hasError) {
-            return Padding(
-                padding: const EdgeInsets.all(24),
-                child: Text(snap.error.toString()));
-          }
-          if (!snap.hasData) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          final msgs = snap.data!.messages
-              .where((m) =>
-                  m.role != 'tool' &&
-                  (m.text.isNotEmpty || m.imageCount > 0 || m.toolCalls.isNotEmpty))
-              .toList();
-          return ListView.builder(
-            padding: const EdgeInsets.all(12),
-            itemCount: msgs.length,
-            itemBuilder: (context, i) {
-              final m = msgs[i];
-              final isUser = m.role == 'user';
-              return Align(
-                alignment:
-                    isUser ? Alignment.centerRight : Alignment.centerLeft,
-                child: Container(
-                  margin: const EdgeInsets.symmetric(vertical: 4),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  constraints: BoxConstraints(
-                      maxWidth: MediaQuery.of(context).size.width * 0.86),
-                  decoration: BoxDecoration(
-                    color: isUser
-                        ? Theme.of(context).colorScheme.primaryContainer
-                        : Theme.of(context).colorScheme.surfaceContainerHighest,
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      if (m.imageCount > 0)
-                        Text('📷 ${m.imageCount} image(s)',
-                            style: Theme.of(context).textTheme.bodySmall),
-                      if (m.toolCalls.isNotEmpty)
-                        Text('🔧 ${m.toolCalls.join(", ")}',
-                            style: Theme.of(context).textTheme.bodySmall),
-                      if (m.text.isNotEmpty)
-                        isUser
-                            ? Text(m.text)
-                            : MarkdownBody(data: m.text, selectable: true),
-                    ],
-                  ),
-                ),
-              );
-            },
-          );
-        },
       ),
     );
   }
