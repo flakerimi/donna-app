@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'screens/connect_screen.dart';
 import 'screens/home_shell.dart';
 import 'state/app_state.dart';
+import 'theme.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -18,16 +19,10 @@ class HarnessApp extends StatelessWidget {
     return AppScope(
       state: state,
       child: MaterialApp(
-        title: 'Harness',
+        title: 'Donna',
         debugShowCheckedModeBanner: false,
-        theme: ThemeData(
-          colorSchemeSeed: const Color(0xFF2F6B4F),
-          brightness: Brightness.light,
-        ),
-        darkTheme: ThemeData(
-          colorSchemeSeed: const Color(0xFF2F6B4F),
-          brightness: Brightness.dark,
-        ),
+        theme: DonnaTheme.light(),
+        darkTheme: DonnaTheme.dark(),
         home: ListenableBuilder(
           listenable: state,
           builder: (context, _) {

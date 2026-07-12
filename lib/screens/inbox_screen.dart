@@ -26,7 +26,11 @@ class InboxScreenState extends State<InboxScreen> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => refresh());
+    // Opening the inbox is reading it — refresh, then clear unread.
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await refresh();
+      if (mounted) await markSeen();
+    });
     _poll = Timer.periodic(const Duration(seconds: 60), (_) => refresh());
   }
 

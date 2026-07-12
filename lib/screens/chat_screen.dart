@@ -6,14 +6,20 @@ import 'package:image_picker/image_picker.dart';
 
 import '../api/models.dart';
 import '../main.dart';
+import '../theme.dart';
 
 /// A live chat with the harness: streaming replies, tool activity, per-session
 /// provider/model override, and photo attachments (v0.12+ servers).
 class ChatScreen extends StatefulWidget {
-  /// Open an existing session (from the Sessions tab); null starts the app's
+  /// Open an existing session (from the chats list); null starts the app's
   /// rolling default session.
   final String? sessionId;
-  const ChatScreen({super.key, this.sessionId});
+
+  /// When set, the home shell's drawer rides this scaffold (hamburger appears)
+  /// and the new-chat action is delegated up so the shell can swap sessions.
+  final Widget? drawer;
+  final VoidCallback? onNewChat;
+  const ChatScreen({super.key, this.sessionId, this.drawer, this.onNewChat});
 
   @override
   State<ChatScreen> createState() => _ChatScreenState();
@@ -272,14 +278,16 @@ class _ChatScreenState extends State<ChatScreen> {
   Widget build(BuildContext context) {
     final state = AppScope.of(context);
     return Scaffold(
+      drawer: widget.drawer,
       appBar: AppBar(
         title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Chat'),
+            const Text('Donna'),
             Text(
-              '${state.profile.isEmpty ? "default" : state.profile} · ${_provider ?? "auto"}${_model == null ? "" : " · $_model"}',
-              style: Theme.of(context).textTheme.bodySmall,
+              '${state.profile.isEmpty ? "default" : state.profile} · ${_provider ?? "auto"}',
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: Theme.of(context).colorScheme.outline,
+                  fontFamily: null),
             ),
           ],
         ),
@@ -321,9 +329,9 @@ class _ChatScreenState extends State<ChatScreen> {
               ],
             ),
           IconButton(
-            icon: const Icon(Icons.add_comment_outlined),
-            tooltip: 'New session',
-            onPressed: _newSession,
+            icon: const Icon(Icons.edit_square),
+            tooltip: 'New chat',
+            onPressed: widget.onNewChat ?? _newSession,
           ),
         ],
       ),
@@ -332,8 +340,24 @@ class _ChatScreenState extends State<ChatScreen> {
           Expanded(
             child: _messages.isEmpty
                 ? Center(
-                    child: Text('Session "$_session" — say something.',
-                        style: Theme.of(context).textTheme.bodyMedium))
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        DonnaTheme.spark(context, size: 34),
+                        const SizedBox(height: 14),
+                        Text(
+                          DonnaTheme.greeting(),
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontFamily: DonnaTheme.serif,
+                            fontSize: 28,
+                            fontWeight: FontWeight.w500,
+                            color: Theme.of(context).colorScheme.onSurface,
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
                 : ListView.builder(
                     controller: _scroll,
                     padding: const EdgeInsets.all(12),
@@ -359,39 +383,56 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
           SafeArea(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(8, 4, 8, 8),
-              child: Row(
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.add_photo_alternate_outlined),
-                    tooltip: 'Attach photo',
-                    onPressed: _sending ? null : _attachPhoto,
-                  ),
-                  Expanded(
-                    child: TextField(
-                      controller: _input,
-                      minLines: 1,
-                      maxLines: 5,
-                      textInputAction: TextInputAction.send,
-                      onSubmitted: (_) => _send(),
-                      decoration: const InputDecoration(
-                        hintText: 'Message…',
-                        border: OutlineInputBorder(),
-                        isDense: true,
+              padding: const EdgeInsets.fromLTRB(12, 6, 12, 10),
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(4, 2, 6, 2),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(26),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.add),
+                      tooltip: 'Attach photo',
+                      onPressed: _sending ? null : _attachPhoto,
+                    ),
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                        child: TextField(
+                          controller: _input,
+                          minLines: 1,
+                          maxLines: 5,
+                          textInputAction: TextInputAction.send,
+                          onSubmitted: (_) => _send(),
+                          decoration: const InputDecoration.collapsed(
+                              hintText: 'Reply to Donna…'),
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 6),
-                  IconButton.filled(
-                    icon: _sending
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2))
-                        : const Icon(Icons.arrow_upward),
-                    onPressed: _sending ? null : _send,
-                  ),
-                ],
+                    const SizedBox(width: 6),
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: IconButton.filled(
+                        style: IconButton.styleFrom(
+                          backgroundColor:
+                              Theme.of(context).colorScheme.primary,
+                          minimumSize: const Size(36, 36),
+                        ),
+                        icon: _sending
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                    strokeWidth: 2, color: Colors.white))
+                            : const Icon(Icons.arrow_upward, size: 18),
+                        onPressed: _sending ? null : _send,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -417,22 +458,36 @@ class _MessageBubble extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final isUser = msg.role == 'user';
-    final bg = isUser
-        ? scheme.primaryContainer
-        : msg.isError
-            ? scheme.errorContainer
-            : scheme.surfaceContainerHighest;
+
+    // Claude's layout language: the user's words sit in a soft rounded bubble
+    // on the right; the assistant's reply is flat text on the page, marked
+    // only by the spark.
+    if (!isUser) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(top: 3, right: 8),
+              child: DonnaTheme.spark(context, size: 14),
+            ),
+            Expanded(child: _assistantBody(context, scheme)),
+          ],
+        ),
+      );
+    }
 
     return Align(
-      alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
+      alignment: Alignment.centerRight,
       child: Container(
         margin: const EdgeInsets.symmetric(vertical: 4),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         constraints:
-            BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.86),
+            BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.8),
         decoration: BoxDecoration(
-          color: bg,
-          borderRadius: BorderRadius.circular(14),
+          color: scheme.primaryContainer,
+          borderRadius: BorderRadius.circular(18),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -443,66 +498,78 @@ class _MessageBubble extends StatelessWidget {
                 child: Text('📷 ${msg.images} image${msg.images > 1 ? "s" : ""}',
                     style: Theme.of(context).textTheme.bodySmall),
               ),
-            if (msg.tools.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 4),
-                child: Wrap(
-                  spacing: 4,
-                  children: [
-                    for (final t in msg.tools)
-                      Chip(
-                        label: Text(t),
-                        visualDensity: VisualDensity.compact,
-                        labelStyle: Theme.of(context).textTheme.labelSmall,
-                        avatar: const Icon(Icons.build, size: 12),
-                      ),
-                  ],
-                ),
-              ),
-            if (msg.text.isNotEmpty)
-              isUser
-                  ? Text(msg.text)
-                  : MarkdownBody(data: msg.text, selectable: true),
-            if (msg.streaming && msg.text.isEmpty)
-              const Padding(
-                padding: EdgeInsets.all(4),
-                child: SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2)),
-              ),
-            if (!isUser && !msg.streaming && msg.text.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.only(top: 2),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (msg.model.isNotEmpty)
-                      Text(msg.model,
-                          style: Theme.of(context)
-                              .textTheme
-                              .labelSmall
-                              ?.copyWith(color: scheme.outline)),
-                    if (!msg.isError && onFeedback != null) ...[
-                      const SizedBox(width: 8),
-                      InkWell(
-                        onTap: () => onFeedback!(true),
-                        child: Icon(Icons.thumb_up_outlined,
-                            size: 14, color: scheme.outline),
-                      ),
-                      const SizedBox(width: 10),
-                      InkWell(
-                        onTap: () => onFeedback!(false),
-                        child: Icon(Icons.thumb_down_outlined,
-                            size: 14, color: scheme.outline),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
+            if (msg.text.isNotEmpty) Text(msg.text),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _assistantBody(BuildContext context, ColorScheme scheme) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (msg.tools.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Wrap(
+              spacing: 4,
+              runSpacing: 4,
+              children: [
+                for (final t in msg.tools)
+                  Chip(
+                    label: Text(t),
+                    visualDensity: VisualDensity.compact,
+                    labelStyle: Theme.of(context).textTheme.labelSmall,
+                    avatar: const Icon(Icons.build, size: 12),
+                    side: BorderSide(color: scheme.outline.withValues(alpha: 0.3)),
+                    backgroundColor: Colors.transparent,
+                  ),
+              ],
+            ),
+          ),
+        if (msg.text.isNotEmpty)
+          msg.isError
+              ? Text(msg.text, style: TextStyle(color: scheme.error))
+              : MarkdownBody(data: msg.text, selectable: true),
+        if (msg.streaming && msg.text.isEmpty)
+          const Padding(
+            padding: EdgeInsets.all(4),
+            child: SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2)),
+          ),
+        if (!msg.streaming && msg.text.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (msg.model.isNotEmpty)
+                  Text(msg.model,
+                      style: Theme.of(context)
+                          .textTheme
+                          .labelSmall
+                          ?.copyWith(color: scheme.outline)),
+                if (!msg.isError && onFeedback != null) ...[
+                  const SizedBox(width: 10),
+                  InkWell(
+                    onTap: () => onFeedback!(true),
+                    child: Icon(Icons.thumb_up_outlined,
+                        size: 14, color: scheme.outline),
+                  ),
+                  const SizedBox(width: 12),
+                  InkWell(
+                    onTap: () => onFeedback!(false),
+                    child: Icon(Icons.thumb_down_outlined,
+                        size: 14, color: scheme.outline),
+                  ),
+                ],
+              ],
+            ),
+          ),
+      ],
     );
   }
 }

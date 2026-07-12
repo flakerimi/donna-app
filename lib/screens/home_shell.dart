@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
+import '../api/models.dart';
 import '../main.dart';
 import '../push/push_service.dart';
 import 'chat_screen.dart';
@@ -8,7 +11,8 @@ import 'sessions_screen.dart';
 import 'settings_screen.dart';
 import 'tasks_screen.dart';
 
-/// Bottom-nav shell: Chat · Inbox · Sessions · Tasks · Settings.
+/// Claude-app structure: the chat IS the home screen; everything else lives in
+/// a left drawer — recent conversations, then Inbox, Tasks, Settings.
 class HomeShell extends StatefulWidget {
   const HomeShell({super.key});
 
@@ -17,59 +21,170 @@ class HomeShell extends StatefulWidget {
 }
 
 class _HomeShellState extends State<HomeShell> {
-  int _index = 0;
-  int _unread = 0;
-  final _inboxKey = GlobalKey<InboxScreenState>();
+  String _session = 'app';
 
   @override
   void initState() {
     super.initState();
-    // Connected → offer push registration (no-op off iOS or if declined).
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) PushService.init(AppScope.of(context));
     });
   }
 
+  void _openSession(String id) => setState(() => _session = id);
+
+  void _newChat() =>
+      setState(() => _session = 'app-${DateTime.now().millisecondsSinceEpoch}');
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: IndexedStack(
-        index: _index,
-        children: [
-          const ChatScreen(),
-          InboxScreen(
-            key: _inboxKey,
-            onUnread: (n) {
-              if (mounted && n != _unread) setState(() => _unread = n);
-            },
-          ),
-          const SessionsScreen(),
-          const TasksScreen(),
-          const SettingsScreen(),
-        ],
+    return ChatScreen(
+      key: ValueKey(_session),
+      sessionId: _session,
+      drawer: DonnaDrawer(
+        currentSession: _session,
+        onOpenSession: _openSession,
+        onNewChat: _newChat,
       ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _index,
-        onDestinationSelected: (i) {
-          setState(() => _index = i);
-          // Opening the inbox marks it seen — the badge clears.
-          if (i == 1) _inboxKey.currentState?.markSeen();
-        },
-        destinations: [
-          const NavigationDestination(
-              icon: Icon(Icons.chat_bubble_outline), label: 'Chat'),
-          NavigationDestination(
-            icon: _unread > 0
-                ? Badge.count(
-                    count: _unread, child: const Icon(Icons.inbox_outlined))
-                : const Icon(Icons.inbox_outlined),
-            label: 'Inbox',
-          ),
-          const NavigationDestination(icon: Icon(Icons.history), label: 'Sessions'),
-          const NavigationDestination(icon: Icon(Icons.task_alt), label: 'Tasks'),
-          const NavigationDestination(
-              icon: Icon(Icons.settings_outlined), label: 'Settings'),
-        ],
+      onNewChat: _newChat,
+    );
+  }
+}
+
+/// The drawer: recent chats up top (tap to switch), destinations below.
+class DonnaDrawer extends StatefulWidget {
+  final String currentSession;
+  final void Function(String sessionId) onOpenSession;
+  final VoidCallback onNewChat;
+  const DonnaDrawer({
+    super.key,
+    required this.currentSession,
+    required this.onOpenSession,
+    required this.onNewChat,
+  });
+
+  @override
+  State<DonnaDrawer> createState() => _DonnaDrawerState();
+}
+
+class _DonnaDrawerState extends State<DonnaDrawer> {
+  List<SessionMeta>? _recent;
+  int _unread = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+  }
+
+  Future<void> _load() async {
+    final state = AppScope.of(context);
+    try {
+      final results = await Future.wait([
+        state.client!.sessions(profile: state.profile),
+        state.client!.deliveries(profile: state.profile),
+      ]);
+      if (!mounted) return;
+      setState(() {
+        _recent = (results[0] as List<SessionMeta>).take(12).toList();
+        _unread = (results[1] as DeliveriesPage).unread;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _recent = []);
+    }
+  }
+
+  void _push(Widget screen) {
+    Navigator.pop(context); // close the drawer first
+    Navigator.of(context)
+        .push(MaterialPageRoute(builder: (_) => screen))
+        .then((_) => _load());
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Drawer(
+      child: SafeArea(
+        child: Column(
+          children: [
+            ListTile(
+              leading: CircleAvatar(
+                backgroundImage:
+                    const AssetImage('assets/icon/donna.png'),
+                onBackgroundImageError: (_, _) {},
+                backgroundColor: scheme.primaryContainer,
+              ),
+              title: const Text('Donna',
+                  style: TextStyle(
+                      fontFamily: 'Georgia', fontWeight: FontWeight.w600)),
+              subtitle: Text(AppScope.of(context).profile.isEmpty
+                  ? 'assistant'
+                  : AppScope.of(context).profile),
+              trailing: IconButton(
+                icon: const Icon(Icons.edit_square),
+                tooltip: 'New chat',
+                onPressed: () {
+                  Navigator.pop(context);
+                  widget.onNewChat();
+                },
+              ),
+            ),
+            const Divider(),
+            Expanded(
+              child: _recent == null
+                  ? const Center(
+                      child: SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2)))
+                  : ListView(
+                      children: [
+                        for (final s in _recent!)
+                          ListTile(
+                            dense: true,
+                            selected: s.id == widget.currentSession,
+                            selectedTileColor: scheme.surfaceContainerHighest,
+                            title: Text(
+                              s.title.isEmpty ? s.id : s.title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            onTap: () {
+                              Navigator.pop(context);
+                              widget.onOpenSession(s.id);
+                            },
+                          ),
+                        ListTile(
+                          dense: true,
+                          leading: const Icon(Icons.forum_outlined, size: 18),
+                          title: const Text('All chats'),
+                          onTap: () => _push(const SessionsScreen()),
+                        ),
+                      ],
+                    ),
+            ),
+            const Divider(),
+            ListTile(
+              leading: _unread > 0
+                  ? Badge.count(
+                      count: _unread, child: const Icon(Icons.inbox_outlined))
+                  : const Icon(Icons.inbox_outlined),
+              title: const Text('Inbox'),
+              onTap: () => _push(const InboxScreen()),
+            ),
+            ListTile(
+              leading: const Icon(Icons.task_alt),
+              title: const Text('Tasks'),
+              onTap: () => _push(const TasksScreen()),
+            ),
+            ListTile(
+              leading: const Icon(Icons.settings_outlined),
+              title: const Text('Settings'),
+              onTap: () => _push(const SettingsScreen()),
+            ),
+          ],
+        ),
       ),
     );
   }
