@@ -23,8 +23,10 @@ class _ConnectScreenState extends State<ConnectScreen> {
       _busy = true;
       _error = null;
     });
-    final client =
-        HarnessClient(baseUrl: _url.text.trim(), token: _token.text.trim());
+    final client = HarnessClient(
+      baseUrl: _url.text.trim(),
+      token: _token.text.trim(),
+    );
     try {
       if (!await client.health()) {
         throw const HarnessApiException(0, 'healthz did not answer "ok"');
@@ -55,16 +57,23 @@ class _ConnectScreenState extends State<ConnectScreen> {
             shrinkWrap: true,
             padding: const EdgeInsets.all(24),
             children: [
-              Icon(Icons.hub_outlined,
-                  size: 56, color: Theme.of(context).colorScheme.primary),
+              Icon(
+                Icons.hub_outlined,
+                size: 56,
+                color: Theme.of(context).colorScheme.primary,
+              ),
               const SizedBox(height: 12),
-              Text('Connect to your harness',
-                  textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.headlineSmall),
+              Text(
+                'Connect to your harness',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.headlineSmall,
+              ),
               const SizedBox(height: 6),
-              Text('The daemon\'s URL and its API token.',
-                  textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.bodyMedium),
+              Text(
+                'The daemon\'s URL and its API token.',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
               const SizedBox(height: 24),
               TextField(
                 controller: _url,
@@ -89,9 +98,10 @@ class _ConnectScreenState extends State<ConnectScreen> {
               ),
               if (_error != null) ...[
                 const SizedBox(height: 12),
-                Text(_error!,
-                    style:
-                        TextStyle(color: Theme.of(context).colorScheme.error)),
+                Text(
+                  _error!,
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
               ],
               const SizedBox(height: 20),
               FilledButton.icon(
@@ -100,7 +110,8 @@ class _ConnectScreenState extends State<ConnectScreen> {
                     ? const SizedBox(
                         width: 16,
                         height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2))
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
                     : const Icon(Icons.link),
                 label: Text(_busy ? 'Checking…' : 'Connect'),
               ),

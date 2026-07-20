@@ -28,7 +28,8 @@ class HarnessApp extends StatelessWidget {
           builder: (context, _) {
             if (!state.loaded) {
               return const Scaffold(
-                  body: Center(child: CircularProgressIndicator()));
+                body: Center(child: CircularProgressIndicator()),
+              );
             }
             return state.connected ? const HomeShell() : const ConnectScreen();
           },
@@ -42,7 +43,7 @@ class HarnessApp extends StatelessWidget {
 /// state-management package, and all this app needs.
 class AppScope extends InheritedNotifier<AppState> {
   const AppScope({super.key, required AppState state, required super.child})
-      : super(notifier: state);
+    : super(notifier: state);
 
   static AppState of(BuildContext context) =>
       context.dependOnInheritedWidgetOfExactType<AppScope>()!.notifier!;

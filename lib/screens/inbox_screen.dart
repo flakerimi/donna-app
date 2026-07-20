@@ -53,15 +53,18 @@ class InboxScreenState extends State<InboxScreen> {
   /// Start a fresh chat with the delivery quoted, so "what does this mean?"
   /// is one tap instead of a copy-paste round trip.
   void _askAbout(DeliveryItem it) {
-    final snippet =
-        it.text.length > 300 ? '${it.text.substring(0, 300)}…' : it.text;
+    final snippet = it.text.length > 300
+        ? '${it.text.substring(0, 300)}…'
+        : it.text;
     final quoted = snippet.split('\n').map((l) => '> $l').join('\n');
-    Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => ChatScreen(
-        sessionId: 'app-${DateTime.now().millisecondsSinceEpoch}',
-        initialText: 'About this delivery:\n$quoted\n\n',
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ChatScreen(
+          sessionId: 'app-${DateTime.now().millisecondsSinceEpoch}',
+          initialText: 'About this delivery:\n$quoted\n\n',
+        ),
       ),
-    ));
+    );
   }
 
   /// Mark everything read — called when the tab becomes visible.
@@ -89,80 +92,86 @@ class InboxScreenState extends State<InboxScreen> {
       body: RefreshIndicator(
         onRefresh: refresh,
         child: _error != null
-            ? ListView(children: [
-                Padding(padding: const EdgeInsets.all(24), child: Text(_error!))
-              ])
+            ? ListView(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Text(_error!),
+                  ),
+                ],
+              )
             : _items == null
-                ? const Center(child: CircularProgressIndicator())
-                : _items!.isEmpty
-                    ? ListView(children: const [
-                        Padding(
-                          padding: EdgeInsets.all(24),
-                          child: Text(
-                              'Nothing delivered yet. Briefs, digests, and task results land here.'),
-                        )
-                      ])
-                    : ListView.builder(
-                        padding: const EdgeInsets.all(12),
-                        itemCount: _items!.length,
-                        itemBuilder: (context, i) {
-                          final it = _items![i];
-                          return Card(
-                            elevation: it.read ? 0 : 1,
-                            color: it.read
-                                ? scheme.surfaceContainerLow
-                                : scheme.surfaceContainerHighest,
-                            margin: const EdgeInsets.only(bottom: 10),
-                            child: Padding(
-                              padding: const EdgeInsets.all(12),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    children: [
-                                      if (!it.read)
-                                        Padding(
-                                          padding:
-                                              const EdgeInsets.only(right: 6),
-                                          child: Icon(Icons.circle,
-                                              size: 8, color: scheme.primary),
-                                        ),
-                                      Text(
-                                        it.created == null
-                                            ? ''
-                                            : _stamp(it.created!),
-                                        style: Theme.of(context)
-                                            .textTheme
-                                            .labelSmall
-                                            ?.copyWith(color: scheme.outline),
-                                      ),
-                                    ],
+            ? const Center(child: CircularProgressIndicator())
+            : _items!.isEmpty
+            ? ListView(
+                children: const [
+                  Padding(
+                    padding: EdgeInsets.all(24),
+                    child: Text(
+                      'Nothing delivered yet. Briefs, digests, and task results land here.',
+                    ),
+                  ),
+                ],
+              )
+            : ListView.builder(
+                padding: const EdgeInsets.all(12),
+                itemCount: _items!.length,
+                itemBuilder: (context, i) {
+                  final it = _items![i];
+                  return Card(
+                    elevation: it.read ? 0 : 1,
+                    color: it.read
+                        ? scheme.surfaceContainerLow
+                        : scheme.surfaceContainerHighest,
+                    margin: const EdgeInsets.only(bottom: 10),
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              if (!it.read)
+                                Padding(
+                                  padding: const EdgeInsets.only(right: 6),
+                                  child: Icon(
+                                    Icons.circle,
+                                    size: 8,
+                                    color: scheme.primary,
                                   ),
-                                  const SizedBox(height: 6),
-                                  MarkdownBody(
-                                      data: it.text, selectable: true),
-                                  Align(
-                                    alignment: Alignment.centerRight,
-                                    child: TextButton.icon(
-                                      style: TextButton.styleFrom(
-                                        visualDensity: VisualDensity.compact,
-                                        textStyle: Theme.of(context)
-                                            .textTheme
-                                            .labelSmall,
-                                      ),
-                                      icon: const Icon(
-                                          Icons.chat_bubble_outline,
-                                          size: 14),
-                                      label: const Text('Ask Donna'),
-                                      onPressed: () => _askAbout(it),
-                                    ),
-                                  ),
-                                ],
+                                ),
+                              Text(
+                                it.created == null ? '' : _stamp(it.created!),
+                                style: Theme.of(context).textTheme.labelSmall
+                                    ?.copyWith(color: scheme.outline),
                               ),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          MarkdownBody(data: it.text, selectable: true),
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: TextButton.icon(
+                              style: TextButton.styleFrom(
+                                visualDensity: VisualDensity.compact,
+                                textStyle: Theme.of(
+                                  context,
+                                ).textTheme.labelSmall,
+                              ),
+                              icon: const Icon(
+                                Icons.chat_bubble_outline,
+                                size: 14,
+                              ),
+                              label: const Text('Ask Donna'),
+                              onPressed: () => _askAbout(it),
                             ),
-                          );
-                        },
+                          ),
+                        ],
                       ),
+                    ),
+                  );
+                },
+              ),
       ),
     );
   }
@@ -170,7 +179,8 @@ class InboxScreenState extends State<InboxScreen> {
   static String _stamp(DateTime t) {
     final local = t.toLocal();
     final now = DateTime.now();
-    final sameDay = local.year == now.year &&
+    final sameDay =
+        local.year == now.year &&
         local.month == now.month &&
         local.day == now.day;
     final hm =

@@ -9,23 +9,26 @@ class ProfileInfo {
   const ProfileInfo({required this.name, required this.description});
 
   factory ProfileInfo.fromJson(Map<String, dynamic> j) => ProfileInfo(
-        name: j['name'] as String? ?? '',
-        description: j['description'] as String? ?? '',
-      );
+    name: j['name'] as String? ?? '',
+    description: j['description'] as String? ?? '',
+  );
 }
 
 class ProfilesResponse {
   final String defaultProfile;
   final List<ProfileInfo> profiles;
-  const ProfilesResponse({required this.defaultProfile, required this.profiles});
+  const ProfilesResponse({
+    required this.defaultProfile,
+    required this.profiles,
+  });
 
   factory ProfilesResponse.fromJson(Map<String, dynamic> j) => ProfilesResponse(
-        defaultProfile: j['default'] as String? ?? '',
-        profiles: [
-          for (final p in (j['profiles'] as List? ?? []))
-            ProfileInfo.fromJson(p as Map<String, dynamic>)
-        ],
-      );
+    defaultProfile: j['default'] as String? ?? '',
+    profiles: [
+      for (final p in (j['profiles'] as List? ?? []))
+        ProfileInfo.fromJson(p as Map<String, dynamic>),
+    ],
+  );
 }
 
 class ModelOption {
@@ -33,25 +36,30 @@ class ModelOption {
   final String label;
   const ModelOption({required this.id, required this.label});
 
-  factory ModelOption.fromJson(Map<String, dynamic> j) =>
-      ModelOption(id: j['id'] as String? ?? '', label: j['label'] as String? ?? '');
+  factory ModelOption.fromJson(Map<String, dynamic> j) => ModelOption(
+    id: j['id'] as String? ?? '',
+    label: j['label'] as String? ?? '',
+  );
 }
 
 class ProviderModels {
   final String provider;
   final String defaultModel;
   final List<ModelOption> models;
-  const ProviderModels(
-      {required this.provider, required this.defaultModel, required this.models});
+  const ProviderModels({
+    required this.provider,
+    required this.defaultModel,
+    required this.models,
+  });
 
   factory ProviderModels.fromJson(Map<String, dynamic> j) => ProviderModels(
-        provider: j['provider'] as String? ?? '',
-        defaultModel: j['default'] as String? ?? '',
-        models: [
-          for (final m in (j['models'] as List? ?? []))
-            ModelOption.fromJson(m as Map<String, dynamic>)
-        ],
-      );
+    provider: j['provider'] as String? ?? '',
+    defaultModel: j['default'] as String? ?? '',
+    models: [
+      for (final m in (j['models'] as List? ?? []))
+        ModelOption.fromJson(m as Map<String, dynamic>),
+    ],
+  );
 }
 
 class SessionMeta {
@@ -69,12 +77,12 @@ class SessionMeta {
   });
 
   factory SessionMeta.fromJson(Map<String, dynamic> j) => SessionMeta(
-        id: j['id'] as String? ?? '',
-        turns: (j['turns'] as num? ?? 0).toInt(),
-        title: j['title'] as String? ?? '',
-        preview: j['preview'] as String? ?? '',
-        updated: DateTime.tryParse(j['updated'] as String? ?? ''),
-      );
+    id: j['id'] as String? ?? '',
+    turns: (j['turns'] as num? ?? 0).toInt(),
+    title: j['title'] as String? ?? '',
+    preview: j['preview'] as String? ?? '',
+    updated: DateTime.tryParse(j['updated'] as String? ?? ''),
+  );
 }
 
 /// One block of a persisted history message (Go-marshaled provider.Block).
@@ -105,19 +113,19 @@ class HistoryMessage {
   const HistoryMessage({required this.role, required this.blocks});
 
   factory HistoryMessage.fromJson(Map<String, dynamic> j) => HistoryMessage(
-        role: j['Role'] as String? ?? '',
-        blocks: [
-          for (final b in (j['Content'] as List? ?? []))
-            HistoryBlock.fromJson(b as Map<String, dynamic>)
-        ],
-      );
+    role: j['Role'] as String? ?? '',
+    blocks: [
+      for (final b in (j['Content'] as List? ?? []))
+        HistoryBlock.fromJson(b as Map<String, dynamic>),
+    ],
+  );
 
   String get text =>
       blocks.where((b) => b.type == 'text').map((b) => b.text).join('\n');
   int get imageCount => blocks.where((b) => b.type == 'image').length;
   List<String> get toolCalls => [
-        for (final b in blocks.where((b) => b.type == 'tool_use')) b.toolName
-      ];
+    for (final b in blocks.where((b) => b.type == 'tool_use')) b.toolName,
+  ];
 }
 
 class SessionHistory {
@@ -137,16 +145,16 @@ class SessionHistory {
   });
 
   factory SessionHistory.fromJson(Map<String, dynamic> j) => SessionHistory(
-        id: j['id'] as String? ?? '',
-        profile: j['profile'] as String? ?? '',
-        provider: j['provider'] as String? ?? '',
-        model: j['model'] as String? ?? '',
-        turns: (j['turns'] as num? ?? 0).toInt(),
-        messages: [
-          for (final m in (j['messages'] as List? ?? []))
-            HistoryMessage.fromJson(m as Map<String, dynamic>)
-        ],
-      );
+    id: j['id'] as String? ?? '',
+    profile: j['profile'] as String? ?? '',
+    provider: j['provider'] as String? ?? '',
+    model: j['model'] as String? ?? '',
+    turns: (j['turns'] as num? ?? 0).toInt(),
+    messages: [
+      for (final m in (j['messages'] as List? ?? []))
+        HistoryMessage.fromJson(m as Map<String, dynamic>),
+    ],
+  );
 }
 
 class TaskItem {
@@ -168,14 +176,50 @@ class TaskItem {
   });
 
   factory TaskItem.fromJson(Map<String, dynamic> j) => TaskItem(
-        id: j['id'] as String? ?? '',
-        profile: j['profile'] as String? ?? '',
-        prompt: j['prompt'] as String? ?? '',
-        status: j['status'] as String? ?? '',
-        result: j['result'] as String? ?? '',
-        error: j['error'] as String? ?? '',
-        created: DateTime.tryParse(j['created'] as String? ?? ''),
-      );
+    id: j['id'] as String? ?? '',
+    profile: j['profile'] as String? ?? '',
+    prompt: j['prompt'] as String? ?? '',
+    status: j['status'] as String? ?? '',
+    result: j['result'] as String? ?? '',
+    error: j['error'] as String? ?? '',
+    created: DateTime.tryParse(j['created'] as String? ?? ''),
+  );
+}
+
+/// One scheduled job on the identity's proactive clock (GET /v1/schedules).
+class ScheduleItem {
+  final String id;
+  final String profile;
+  final String provider;
+  final String prompt;
+  final String spec; // "daily 08:00", "every 30m", …
+  final String deliver; // e.g. "app:personal"; empty = stdout only
+  final bool enabled;
+  final DateTime? lastRun;
+  final DateTime? nextRun;
+  const ScheduleItem({
+    required this.id,
+    required this.profile,
+    required this.provider,
+    required this.prompt,
+    required this.spec,
+    required this.deliver,
+    required this.enabled,
+    this.lastRun,
+    this.nextRun,
+  });
+
+  factory ScheduleItem.fromJson(Map<String, dynamic> j) => ScheduleItem(
+    id: j['id'] as String? ?? '',
+    profile: j['profile'] as String? ?? '',
+    provider: j['provider'] as String? ?? '',
+    prompt: j['prompt'] as String? ?? '',
+    spec: j['spec'] as String? ?? '',
+    deliver: j['deliver'] as String? ?? '',
+    enabled: j['enabled'] as bool? ?? false,
+    lastRun: DateTime.tryParse(j['last_run'] as String? ?? ''),
+    nextRun: DateTime.tryParse(j['next_run'] as String? ?? ''),
+  );
 }
 
 /// One delivered message in the identity's inbox (scheduled runs, task
@@ -185,15 +229,19 @@ class DeliveryItem {
   final String text;
   final DateTime? created;
   final bool read;
-  const DeliveryItem(
-      {required this.id, required this.text, this.created, required this.read});
+  const DeliveryItem({
+    required this.id,
+    required this.text,
+    this.created,
+    required this.read,
+  });
 
   factory DeliveryItem.fromJson(Map<String, dynamic> j) => DeliveryItem(
-        id: j['id'] as String? ?? '',
-        text: j['text'] as String? ?? '',
-        created: DateTime.tryParse(j['created'] as String? ?? ''),
-        read: j['read'] as bool? ?? false,
-      );
+    id: j['id'] as String? ?? '',
+    text: j['text'] as String? ?? '',
+    created: DateTime.tryParse(j['created'] as String? ?? ''),
+    read: j['read'] as bool? ?? false,
+  );
 }
 
 class DeliveriesPage {
@@ -202,12 +250,12 @@ class DeliveriesPage {
   const DeliveriesPage({required this.unread, required this.items});
 
   factory DeliveriesPage.fromJson(Map<String, dynamic> j) => DeliveriesPage(
-        unread: (j['unread'] as num? ?? 0).toInt(),
-        items: [
-          for (final it in (j['items'] as List? ?? []))
-            DeliveryItem.fromJson(it as Map<String, dynamic>)
-        ],
-      );
+    unread: (j['unread'] as num? ?? 0).toInt(),
+    items: [
+      for (final it in (j['items'] as List? ?? []))
+        DeliveryItem.fromJson(it as Map<String, dynamic>),
+    ],
+  );
 }
 
 /// One integration's live status (Settings → Connectors).
@@ -215,14 +263,17 @@ class ConnectorInfo {
   final String name;
   final bool connected;
   final String detail;
-  const ConnectorInfo(
-      {required this.name, required this.connected, required this.detail});
+  const ConnectorInfo({
+    required this.name,
+    required this.connected,
+    required this.detail,
+  });
 
   factory ConnectorInfo.fromJson(Map<String, dynamic> j) => ConnectorInfo(
-        name: j['name'] as String? ?? '',
-        connected: j['connected'] as bool? ?? false,
-        detail: j['detail'] as String? ?? '',
-      );
+    name: j['name'] as String? ?? '',
+    connected: j['connected'] as bool? ?? false,
+    detail: j['detail'] as String? ?? '',
+  );
 }
 
 /// An image attached to an outgoing chat turn.
@@ -231,7 +282,10 @@ class ChatImage {
   final String base64Data;
   const ChatImage({required this.mediaType, required this.base64Data});
 
-  Map<String, dynamic> toJson() => {'media_type': mediaType, 'data': base64Data};
+  Map<String, dynamic> toJson() => {
+    'media_type': mediaType,
+    'data': base64Data,
+  };
 }
 
 /// One SSE frame from POST /v1/chat.
@@ -249,12 +303,16 @@ sealed class ChatEvent {
         );
       case 'route':
         return RouteEvent(
-            model: d['model'] as String? ?? '', tier: d['tier'] as String? ?? '');
+          model: d['model'] as String? ?? '',
+          tier: d['tier'] as String? ?? '',
+        );
       case 'text':
         return TextDeltaEvent(d['delta'] as String? ?? '');
       case 'tool_start':
         return ToolStartEvent(
-            name: d['name'] as String? ?? '', id: d['id'] as String? ?? '');
+          name: d['name'] as String? ?? '',
+          id: d['id'] as String? ?? '',
+        );
       case 'tool_result':
         return ToolResultEvent(
           name: d['name'] as String? ?? '',
@@ -279,11 +337,12 @@ sealed class ChatEvent {
 
 class ReadyEvent extends ChatEvent {
   final String profile, session, provider, model;
-  const ReadyEvent(
-      {required this.profile,
-      required this.session,
-      required this.provider,
-      required this.model});
+  const ReadyEvent({
+    required this.profile,
+    required this.session,
+    required this.provider,
+    required this.model,
+  });
 }
 
 class RouteEvent extends ChatEvent {
@@ -304,8 +363,11 @@ class ToolStartEvent extends ChatEvent {
 class ToolResultEvent extends ChatEvent {
   final String name, content;
   final bool isError;
-  const ToolResultEvent(
-      {required this.name, required this.content, required this.isError});
+  const ToolResultEvent({
+    required this.name,
+    required this.content,
+    required this.isError,
+  });
 }
 
 class UsageEvent extends ChatEvent {

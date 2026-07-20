@@ -7,6 +7,7 @@ import '../main.dart';
 import '../push/push_service.dart';
 import '../util/format.dart';
 import 'chat_screen.dart';
+import 'home_screen.dart';
 import 'inbox_screen.dart';
 import 'sessions_screen.dart';
 import 'settings_screen.dart';
@@ -22,7 +23,7 @@ class HomeShell extends StatefulWidget {
   State<HomeShell> createState() => _HomeShellState();
 }
 
-enum _Dest { chat, inbox, tasks, settings }
+enum _Dest { chat, home, inbox, tasks, settings }
 
 class _HomeShellState extends State<HomeShell> {
   String _session = 'app';
@@ -90,6 +91,7 @@ class _HomeShellState extends State<HomeShell> {
                   sessionId: _session,
                   onNewChat: _newChat,
                 ),
+                _Dest.home => HomeScreen(onOpenSession: _openSession),
                 _Dest.inbox => const InboxScreen(),
                 _Dest.tasks => const TasksScreen(),
                 _Dest.settings => const SettingsScreen(),
@@ -173,6 +175,7 @@ class _DonnaMenuState extends State<_DonnaMenu> {
   void _go(_Dest d) {
     if (widget.inDrawer) {
       _push(switch (d) {
+        _Dest.home => const HomeScreen(),
         _Dest.inbox => const InboxScreen(),
         _Dest.tasks => const TasksScreen(),
         _Dest.settings => const SettingsScreen(),
@@ -271,6 +274,13 @@ class _DonnaMenuState extends State<_DonnaMenu> {
                 ),
         ),
         const Divider(),
+        ListTile(
+          leading: const Icon(Icons.space_dashboard_outlined),
+          title: const Text('Home'),
+          selected: widget.selected == _Dest.home,
+          selectedTileColor: scheme.surfaceContainerHighest,
+          onTap: () => _go(_Dest.home),
+        ),
         ListTile(
           leading: _unread > 0
               ? Badge.count(

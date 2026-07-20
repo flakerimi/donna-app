@@ -61,10 +61,13 @@ class _TasksScreenState extends State<TasksScreen> {
         ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
           FilledButton(
-              onPressed: () => Navigator.pop(context, controller.text.trim()),
-              child: const Text('Queue')),
+            onPressed: () => Navigator.pop(context, controller.text.trim()),
+            child: const Text('Queue'),
+          ),
         ],
       ),
     );
@@ -75,8 +78,9 @@ class _TasksScreenState extends State<TasksScreen> {
       await _refresh();
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Queue failed: $e')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Queue failed: $e')));
       }
     }
   }
@@ -98,23 +102,30 @@ class _TasksScreenState extends State<TasksScreen> {
       body: RefreshIndicator(
         onRefresh: _refresh,
         child: _error != null
-            ? ListView(children: [
-                Padding(padding: const EdgeInsets.all(24), child: Text(_error!))
-              ])
+            ? ListView(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Text(_error!),
+                  ),
+                ],
+              )
             : _tasks == null
-                ? const Center(child: CircularProgressIndicator())
-                : _tasks!.isEmpty
-                    ? ListView(children: const [
-                        Padding(
-                            padding: EdgeInsets.all(24),
-                            child: Text(
-                                'No background tasks. Queue one with +.'))
-                      ])
-                    : ListView.separated(
-                        itemCount: _tasks!.length,
-                        separatorBuilder: (_, _) => const Divider(height: 1),
-                        itemBuilder: (_, i) => _TaskTile(task: _tasks![i]),
-                      ),
+            ? const Center(child: CircularProgressIndicator())
+            : _tasks!.isEmpty
+            ? ListView(
+                children: const [
+                  Padding(
+                    padding: EdgeInsets.all(24),
+                    child: Text('No background tasks. Queue one with +.'),
+                  ),
+                ],
+              )
+            : ListView.separated(
+                itemCount: _tasks!.length,
+                separatorBuilder: (_, _) => const Divider(height: 1),
+                itemBuilder: (_, i) => _TaskTile(task: _tasks![i]),
+              ),
       ),
     );
   }
@@ -145,15 +156,16 @@ class _TaskTile extends StatelessWidget {
     final (icon, color) = _statusLook(context);
     return ExpansionTile(
       leading: Icon(icon, color: color),
-      title: Text(task.prompt,
-          maxLines: 2, overflow: TextOverflow.ellipsis),
+      title: Text(task.prompt, maxLines: 2, overflow: TextOverflow.ellipsis),
       subtitle: Text('${task.status} · ${task.profile}'),
       childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
       expandedCrossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (task.error.isNotEmpty)
-          Text('⚠ ${task.error}',
-              style: TextStyle(color: Theme.of(context).colorScheme.error)),
+          Text(
+            '⚠ ${task.error}',
+            style: TextStyle(color: Theme.of(context).colorScheme.error),
+          ),
         if (task.result.isNotEmpty)
           MarkdownBody(data: task.result, selectable: true),
         if (task.error.isEmpty && task.result.isEmpty)

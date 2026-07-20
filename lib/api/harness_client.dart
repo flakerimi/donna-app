@@ -23,16 +23,19 @@ class HarnessClient {
   final String token;
   final http.Client _http;
 
-  HarnessClient({required String baseUrl, required this.token, http.Client? client})
-      : baseUrl = Uri.parse(baseUrl.replaceAll(RegExp(r'/+$'), '')),
-        _http = client ?? http.Client();
+  HarnessClient({
+    required String baseUrl,
+    required this.token,
+    http.Client? client,
+  }) : baseUrl = Uri.parse(baseUrl.replaceAll(RegExp(r'/+$'), '')),
+       _http = client ?? http.Client();
 
   Map<String, String> get _auth => {'Authorization': 'Bearer $token'};
 
   Uri _u(String path, [Map<String, String>? query]) => baseUrl.replace(
-        path: '${baseUrl.path}$path',
-        queryParameters: (query?.isEmpty ?? true) ? null : query,
-      );
+    path: '${baseUrl.path}$path',
+    queryParameters: (query?.isEmpty ?? true) ? null : query,
+  );
 
   void close() => _http.close();
 
@@ -51,40 +54,49 @@ class HarnessClient {
     final j = await _getJson('/v1/models');
     return [
       for (final p in (j['providers'] as List? ?? []))
-        ProviderModels.fromJson(p as Map<String, dynamic>)
+        ProviderModels.fromJson(p as Map<String, dynamic>),
     ];
   }
 
   Future<List<SessionMeta>> sessions({String? profile}) async {
-    final j = await _getJson('/v1/sessions',
-        query: {if (profile != null && profile.isNotEmpty) 'profile': profile});
+    final j = await _getJson(
+      '/v1/sessions',
+      query: {if (profile != null && profile.isNotEmpty) 'profile': profile},
+    );
     return [
       for (final s in (j['sessions'] as List? ?? []))
-        SessionMeta.fromJson(s as Map<String, dynamic>)
+        SessionMeta.fromJson(s as Map<String, dynamic>),
     ];
   }
 
   /// DELETE /v1/sessions/{id} — remove a conversation.
   Future<void> deleteSession(String id, {String? profile}) async {
     final req = http.Request(
-        'DELETE',
-        _u('/v1/sessions/$id',
-            {if (profile != null && profile.isNotEmpty) 'profile': profile}))
-      ..headers.addAll(_auth);
+      'DELETE',
+      _u('/v1/sessions/$id', {
+        if (profile != null && profile.isNotEmpty) 'profile': profile,
+      }),
+    )..headers.addAll(_auth);
     final res = await http.Response.fromStream(await _http.send(req));
     _check(res);
   }
 
   Future<SessionHistory> sessionHistory(String id, {String? profile}) async =>
-      SessionHistory.fromJson(await _getJson('/v1/sessions/$id',
-          query: {if (profile != null && profile.isNotEmpty) 'profile': profile}));
+      SessionHistory.fromJson(
+        await _getJson(
+          '/v1/sessions/$id',
+          query: {
+            if (profile != null && profile.isNotEmpty) 'profile': profile,
+          },
+        ),
+      );
 
   Future<List<TaskItem>> tasks() async {
     final res = await _http.get(_u('/v1/tasks'), headers: _auth);
     final body = _check(res);
     return [
       for (final t in (jsonDecode(body) as List? ?? []))
-        TaskItem.fromJson(t as Map<String, dynamic>)
+        TaskItem.fromJson(t as Map<String, dynamic>),
     ];
   }
 
@@ -110,14 +122,31 @@ class HarnessClient {
   Future<TaskItem> taskShow(String id) async =>
       TaskItem.fromJson(await _getJson('/v1/tasks/$id'));
 
+  /// GET /v1/schedules — the proactive clock, soonest-firing first.
+  Future<List<ScheduleItem>> schedules() async {
+    final j = await _getJson('/v1/schedules');
+    return [
+      for (final s in (j['schedules'] as List? ?? []))
+        ScheduleItem.fromJson(s as Map<String, dynamic>),
+    ];
+  }
+
   /// GET /v1/deliveries — the identity's delivery feed, newest first.
   Future<DeliveriesPage> deliveries({String? profile}) async =>
-      DeliveriesPage.fromJson(await _getJson('/v1/deliveries',
-          query: {if (profile != null && profile.isNotEmpty) 'profile': profile}));
+      DeliveriesPage.fromJson(
+        await _getJson(
+          '/v1/deliveries',
+          query: {
+            if (profile != null && profile.isNotEmpty) 'profile': profile,
+          },
+        ),
+      );
 
   /// POST /v1/deliveries/read — mark ids read; empty marks everything.
-  Future<void> markDeliveriesRead(
-      {List<String> ids = const [], String? profile}) async {
+  Future<void> markDeliveriesRead({
+    List<String> ids = const [],
+    String? profile,
+  }) async {
     final res = await _http.post(
       _u('/v1/deliveries/read'),
       headers: {..._auth, 'Content-Type': 'application/json'},
@@ -144,11 +173,13 @@ class HarnessClient {
 
   /// GET /v1/connectors — live integration status for the settings page.
   Future<List<ConnectorInfo>> connectors({String? profile}) async {
-    final j = await _getJson('/v1/connectors',
-        query: {if (profile != null && profile.isNotEmpty) 'profile': profile});
+    final j = await _getJson(
+      '/v1/connectors',
+      query: {if (profile != null && profile.isNotEmpty) 'profile': profile},
+    );
     return [
       for (final c in (j['connectors'] as List? ?? []))
-        ConnectorInfo.fromJson(c as Map<String, dynamic>)
+        ConnectorInfo.fromJson(c as Map<String, dynamic>),
     ];
   }
 
@@ -158,8 +189,9 @@ class HarnessClient {
     final res = await _http.post(
       _u('/v1/connectors/google/connect'),
       headers: {..._auth, 'Content-Type': 'application/json'},
-      body: jsonEncode(
-          {if (profile != null && profile.isNotEmpty) 'profile': profile}),
+      body: jsonEncode({
+        if (profile != null && profile.isNotEmpty) 'profile': profile,
+      }),
     );
     final j = jsonDecode(_check(res)) as Map<String, dynamic>;
     return j['url'] as String? ?? '';
@@ -208,9 +240,8 @@ class HarnessClient {
     }
 
     var event = 'message';
-    await for (final line in res.stream
-        .transform(utf8.decoder)
-        .transform(const LineSplitter())) {
+    await for (final line
+        in res.stream.transform(utf8.decoder).transform(const LineSplitter())) {
       if (line.startsWith('event: ')) {
         event = line.substring(7).trim();
       } else if (line.startsWith('data: ')) {
@@ -230,8 +261,10 @@ class HarnessClient {
     }
   }
 
-  Future<Map<String, dynamic>> _getJson(String path,
-      {Map<String, String>? query}) async {
+  Future<Map<String, dynamic>> _getJson(
+    String path, {
+    Map<String, String>? query,
+  }) async {
     final res = await _http.get(_u(path, query), headers: _auth);
     return jsonDecode(_check(res)) as Map<String, dynamic>;
   }

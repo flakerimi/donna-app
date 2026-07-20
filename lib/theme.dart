@@ -15,65 +15,72 @@ abstract final class DonnaTheme {
 
   static const serif = 'Georgia';
 
-  static ThemeData light() => _base(const ColorScheme.light(
-        primary: terracotta,
-        onPrimary: Colors.white,
-        primaryContainer: ivoryBubble,
-        onPrimaryContainer: inkLight,
-        surface: ivory,
-        onSurface: inkLight,
-        surfaceContainerHighest: ivoryContainer,
-        surfaceContainerHigh: ivoryContainer,
-        surfaceContainerLow: ivory,
-        outline: Color(0xFF8A8779),
-      ));
+  static ThemeData light() => _base(
+    const ColorScheme.light(
+      primary: terracotta,
+      onPrimary: Colors.white,
+      primaryContainer: ivoryBubble,
+      onPrimaryContainer: inkLight,
+      surface: ivory,
+      onSurface: inkLight,
+      surfaceContainerHighest: ivoryContainer,
+      surfaceContainerHigh: ivoryContainer,
+      surfaceContainerLow: ivory,
+      outline: Color(0xFF8A8779),
+    ),
+  );
 
-  static ThemeData dark() => _base(const ColorScheme.dark(
-        primary: terracotta,
-        onPrimary: Colors.white,
-        primaryContainer: charcoalBubble,
-        onPrimaryContainer: parchmentText,
-        surface: charcoal,
-        onSurface: parchmentText,
-        surfaceContainerHighest: charcoalContainer,
-        surfaceContainerHigh: charcoalContainer,
-        surfaceContainerLow: charcoal,
-        outline: Color(0xFF8F8D86),
-      ));
+  static ThemeData dark() => _base(
+    const ColorScheme.dark(
+      primary: terracotta,
+      onPrimary: Colors.white,
+      primaryContainer: charcoalBubble,
+      onPrimaryContainer: parchmentText,
+      surface: charcoal,
+      onSurface: parchmentText,
+      surfaceContainerHighest: charcoalContainer,
+      surfaceContainerHigh: charcoalContainer,
+      surfaceContainerLow: charcoal,
+      outline: Color(0xFF8F8D86),
+    ),
+  );
 
   static ThemeData _base(ColorScheme scheme) => ThemeData(
-        colorScheme: scheme,
-        scaffoldBackgroundColor: scheme.surface,
-        appBarTheme: AppBarTheme(
-          backgroundColor: scheme.surface,
-          foregroundColor: scheme.onSurface,
-          elevation: 0,
-          scrolledUnderElevation: 0,
-          centerTitle: true,
-          titleTextStyle: TextStyle(
-            fontFamily: serif,
-            fontSize: 20,
-            fontWeight: FontWeight.w600,
-            color: scheme.onSurface,
-          ),
-        ),
-        drawerTheme: DrawerThemeData(backgroundColor: scheme.surface),
-        dividerTheme: DividerThemeData(
-            color: scheme.outline.withValues(alpha: 0.2), thickness: 0.5),
-        snackBarTheme: SnackBarThemeData(
-          backgroundColor: scheme.onSurface,
-          contentTextStyle: TextStyle(color: scheme.surface),
-        ),
-      );
+    colorScheme: scheme,
+    scaffoldBackgroundColor: scheme.surface,
+    appBarTheme: AppBarTheme(
+      backgroundColor: scheme.surface,
+      foregroundColor: scheme.onSurface,
+      elevation: 0,
+      scrolledUnderElevation: 0,
+      centerTitle: true,
+      titleTextStyle: TextStyle(
+        fontFamily: serif,
+        fontSize: 20,
+        fontWeight: FontWeight.w600,
+        color: scheme.onSurface,
+      ),
+    ),
+    drawerTheme: DrawerThemeData(backgroundColor: scheme.surface),
+    dividerTheme: DividerThemeData(
+      color: scheme.outline.withValues(alpha: 0.2),
+      thickness: 0.5,
+    ),
+    snackBarTheme: SnackBarThemeData(
+      backgroundColor: scheme.onSurface,
+      contentTextStyle: TextStyle(color: scheme.surface),
+    ),
+  );
 
   /// The spark — Donna's stand-in for Claude's asterisk.
   static Widget spark(BuildContext context, {double size = 16}) => Text(
-        '✳',
-        style: TextStyle(
-            fontSize: size,
-            height: 1,
-            color: Theme.of(context).colorScheme.primary),
-      );
+    '✳',
+    style: TextStyle(
+      fontSize: size,
+      height: 1,
+      color: Theme.of(context).colorScheme.primary,
+    ),
+  );
 
   static String greeting() {
     final h = DateTime.now().hour;

@@ -13,6 +13,17 @@ String relativeTime(DateTime? t) {
   return '${local.day}/${local.month}';
 }
 
+/// Future counterpart of [relativeTime]: "in 5m", "in 3h", "in 2d".
+String relativeUntil(DateTime? t) {
+  if (t == null) return '';
+  final d = t.toLocal().difference(DateTime.now());
+  if (d.isNegative) return 'now';
+  if (d.inMinutes < 1) return 'in <1m';
+  if (d.inMinutes < 60) return 'in ${d.inMinutes}m';
+  if (d.inHours < 24) return 'in ${d.inHours}h';
+  return 'in ${d.inDays}d';
+}
+
 /// A human phrase for a running tool. Namespaced connector tools
 /// (`plugin__tool`) are reduced to their tool part first.
 String toolPhrase(String name) {

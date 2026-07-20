@@ -41,8 +41,9 @@ class _SessionsScreenState extends State<SessionsScreen> {
   }
 
   Future<void> _open(String sessionId) async {
-    await Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => ChatScreen(sessionId: sessionId)));
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => ChatScreen(sessionId: sessionId)));
     _refresh(); // the conversation likely grew
   }
 
@@ -54,11 +55,13 @@ class _SessionsScreenState extends State<SessionsScreen> {
         content: Text(s.title.isEmpty ? s.id : s.title),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancel')),
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
           FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Delete')),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete'),
+          ),
         ],
       ),
     );
@@ -72,8 +75,9 @@ class _SessionsScreenState extends State<SessionsScreen> {
       setState(() => _sessions?.removeWhere((x) => x.id == s.id));
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Delete failed: $e')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Delete failed: $e')));
         _refresh();
       }
     }
@@ -91,72 +95,82 @@ class _SessionsScreenState extends State<SessionsScreen> {
       ),
       floatingActionButton: FloatingActionButton(
         tooltip: 'New chat',
-        onPressed: () =>
-            _open('app-${DateTime.now().millisecondsSinceEpoch}'),
+        onPressed: () => _open('app-${DateTime.now().millisecondsSinceEpoch}'),
         child: const Icon(Icons.add_comment_outlined),
       ),
       body: RefreshIndicator(
         onRefresh: _refresh,
         child: _error != null
-            ? ListView(children: [
-                Padding(padding: const EdgeInsets.all(24), child: Text(_error!))
-              ])
+            ? ListView(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Text(_error!),
+                  ),
+                ],
+              )
             : _sessions == null
-                ? const Center(child: CircularProgressIndicator())
-                : _sessions!.isEmpty
-                    ? ListView(children: const [
-                        Padding(
-                            padding: EdgeInsets.all(24),
-                            child: Text('No conversations yet — start one with +.'))
-                      ])
-                    : ListView.separated(
-                        itemCount: _sessions!.length,
-                        separatorBuilder: (_, _) =>
-                            const Divider(height: 1, indent: 72),
-                        itemBuilder: (context, i) {
-                          final s = _sessions![i];
-                          return Dismissible(
-                            key: ValueKey(s.id),
-                            direction: DismissDirection.endToStart,
-                            confirmDismiss: (_) => _confirmDelete(s),
-                            onDismissed: (_) => _delete(s),
-                            background: Container(
-                              color: scheme.errorContainer,
-                              alignment: Alignment.centerRight,
-                              padding: const EdgeInsets.only(right: 24),
-                              child: Icon(Icons.delete_outline,
-                                  color: scheme.onErrorContainer),
-                            ),
-                            child: ListTile(
-                              leading: CircleAvatar(
-                                backgroundColor: scheme.primaryContainer,
-                                child: Icon(Icons.chat_bubble_outline,
-                                    size: 18, color: scheme.onPrimaryContainer),
-                              ),
-                              title: Text(
-                                s.title.isEmpty ? s.id : s.title,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                    fontWeight: FontWeight.w600),
-                              ),
-                              subtitle: Text(
-                                s.preview.isEmpty
-                                    ? '${s.turns} turns'
-                                    : s.preview,
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              trailing: Text(relativeTime(s.updated),
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .labelSmall
-                                      ?.copyWith(color: scheme.outline)),
-                              onTap: () => _open(s.id),
-                            ),
-                          );
-                        },
+            ? const Center(child: CircularProgressIndicator())
+            : _sessions!.isEmpty
+            ? ListView(
+                children: const [
+                  Padding(
+                    padding: EdgeInsets.all(24),
+                    child: Text('No conversations yet — start one with +.'),
+                  ),
+                ],
+              )
+            : ListView.separated(
+                itemCount: _sessions!.length,
+                separatorBuilder: (_, _) =>
+                    const Divider(height: 1, indent: 72),
+                itemBuilder: (context, i) {
+                  final s = _sessions![i];
+                  return Dismissible(
+                    key: ValueKey(s.id),
+                    direction: DismissDirection.endToStart,
+                    confirmDismiss: (_) => _confirmDelete(s),
+                    onDismissed: (_) => _delete(s),
+                    background: Container(
+                      color: scheme.errorContainer,
+                      alignment: Alignment.centerRight,
+                      padding: const EdgeInsets.only(right: 24),
+                      child: Icon(
+                        Icons.delete_outline,
+                        color: scheme.onErrorContainer,
                       ),
+                    ),
+                    child: ListTile(
+                      leading: CircleAvatar(
+                        backgroundColor: scheme.primaryContainer,
+                        child: Icon(
+                          Icons.chat_bubble_outline,
+                          size: 18,
+                          color: scheme.onPrimaryContainer,
+                        ),
+                      ),
+                      title: Text(
+                        s.title.isEmpty ? s.id : s.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                      subtitle: Text(
+                        s.preview.isEmpty ? '${s.turns} turns' : s.preview,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      trailing: Text(
+                        relativeTime(s.updated),
+                        style: Theme.of(
+                          context,
+                        ).textTheme.labelSmall?.copyWith(color: scheme.outline),
+                      ),
+                      onTap: () => _open(s.id),
+                    ),
+                  );
+                },
+              ),
       ),
     );
   }

@@ -106,9 +106,16 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _bootstrap() async {
-    final client = AppScope.of(context).client;
+    final state = AppScope.of(context);
+    final client = state.client;
     if (client == null) return;
-    final profile = AppScope.of(context).profile;
+    final profile = state.profile;
+    // The Home screen's model preference seeds fresh chats; a session's own
+    // persisted provider/model (loaded below) still wins.
+    if (state.prefProvider.isNotEmpty) {
+      _provider ??= state.prefProvider;
+      _model ??= state.prefModel.isEmpty ? null : state.prefModel;
+    }
     // Pickers first, independent of history: a fresh session has no history
     // yet, and that must not cost us the profile/model menus.
     try {
