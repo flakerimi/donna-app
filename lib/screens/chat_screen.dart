@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart' show defaultTargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show ScrollDirection;
 import 'package:flutter/services.dart';
@@ -25,8 +26,13 @@ class ChatScreen extends StatefulWidget {
 
   /// Pre-fills the composer — used by "Ask Donna" on an inbox delivery.
   final String? initialText;
-  const ChatScreen(
-      {super.key, this.sessionId, this.drawer, this.onNewChat, this.initialText});
+  const ChatScreen({
+    super.key,
+    this.sessionId,
+    this.drawer,
+    this.onNewChat,
+    this.initialText,
+  });
 
   @override
   State<ChatScreen> createState() => _ChatScreenState();
@@ -76,6 +82,13 @@ class _ChatScreenState extends State<ChatScreen> {
   List<ProviderModels> _providers = [];
 
   static const _maxImageBytes = 5 << 20; // server-side cap, mirrored
+
+  static bool get _desktop => switch (defaultTargetPlatform) {
+    TargetPlatform.macOS ||
+    TargetPlatform.linux ||
+    TargetPlatform.windows => true,
+    _ => false,
+  };
 
   static const _suggestions = [
     (Icons.wb_sunny_outlined, 'Give me a brief of my day'),
@@ -140,7 +153,9 @@ class _ChatScreenState extends State<ChatScreen> {
             ListTile(
               leading: const Icon(Icons.photo_camera_outlined),
               title: const Text('Take a photo'),
-              subtitle: const Text('Receipts, whiteboards, anything she should see'),
+              subtitle: const Text(
+                'Receipts, whiteboards, anything she should see',
+              ),
               onTap: () => Navigator.pop(context, ImageSource.camera),
             ),
             ListTile(
@@ -155,27 +170,39 @@ class _ChatScreenState extends State<ChatScreen> {
     if (source == null) return;
     try {
       final picked = await _picker.pickImage(
-          source: source, maxWidth: 2048, imageQuality: 85);
+        source: source,
+        maxWidth: 2048,
+        imageQuality: 85,
+      );
       if (picked == null) return;
       final bytes = await picked.readAsBytes();
       if (bytes.length > _maxImageBytes) {
         _toast('That image is over 5 MB — pick a smaller one.');
         return;
       }
-      final mime = picked.mimeType ??
+      final mime =
+          picked.mimeType ??
           (picked.name.toLowerCase().endsWith('.png')
               ? 'image/png'
               : 'image/jpeg');
-      setState(() => _pending.add(_Attachment(
-          picked.name,
-          bytes,
-          ChatImage(mediaType: mime, base64Data: base64Encode(bytes)))));
+      setState(
+        () => _pending.add(
+          _Attachment(
+            picked.name,
+            bytes,
+            ChatImage(mediaType: mime, base64Data: base64Encode(bytes)),
+          ),
+        ),
+      );
     } catch (e) {
       _toast('Could not pick an image: $e');
     }
   }
 
-  Future<void> _send({String? textOverride, List<ChatImage>? imagesOverride}) async {
+  Future<void> _send({
+    String? textOverride,
+    List<ChatImage>? imagesOverride,
+  }) async {
     final fromComposer = textOverride == null && imagesOverride == null;
     final text = textOverride ?? _input.text.trim();
     final images = imagesOverride ?? [for (final a in _pending) a.image];
@@ -280,8 +307,11 @@ class _ChatScreenState extends State<ChatScreen> {
     if (!_follow) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scroll.hasClients && _follow) {
-        _scroll.animateTo(_scroll.position.maxScrollExtent,
-            duration: const Duration(milliseconds: 150), curve: Curves.easeOut);
+        _scroll.animateTo(
+          _scroll.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 150),
+          curve: Curves.easeOut,
+        );
       }
     });
   }
@@ -329,11 +359,13 @@ class _ChatScreenState extends State<ChatScreen> {
         ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel')),
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
           FilledButton(
-              onPressed: () => Navigator.pop(context, controller.text.trim()),
-              child: const Text('Save lesson')),
+            onPressed: () => Navigator.pop(context, controller.text.trim()),
+            child: const Text('Save lesson'),
+          ),
         ],
       ),
     );
@@ -351,214 +383,267 @@ class _ChatScreenState extends State<ChatScreen> {
   Widget build(BuildContext context) {
     final state = AppScope.of(context);
     final scheme = Theme.of(context).colorScheme;
-    return Scaffold(
-      drawer: widget.drawer,
-      appBar: AppBar(
-        title: Column(
-          children: [
-            const Text('Donna'),
-            Text(
-              '${state.profile.isEmpty ? "default" : state.profile} · ${_provider ?? "auto"}',
-              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+    return CallbackShortcuts(
+      bindings: {
+        // ⌘N (ctrl+N elsewhere) starts a fresh chat, desktop-style.
+        const SingleActivator(LogicalKeyboardKey.keyN, meta: true): () =>
+            (widget.onNewChat ?? _newSession)(),
+        const SingleActivator(LogicalKeyboardKey.keyN, control: true): () =>
+            (widget.onNewChat ?? _newSession)(),
+      },
+      child: Scaffold(
+        drawer: widget.drawer,
+        appBar: AppBar(
+          title: Column(
+            children: [
+              const Text('Donna'),
+              Text(
+                '${state.profile.isEmpty ? "default" : state.profile} · ${_provider ?? "auto"}',
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
                   color: Theme.of(context).colorScheme.outline,
-                  fontFamily: null),
+                  fontFamily: null,
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            if (_profiles.isNotEmpty)
+              PopupMenuButton<String>(
+                icon: const Icon(Icons.person_outline),
+                tooltip: 'Identity',
+                onSelected: state.setProfile,
+                itemBuilder: (_) => [
+                  for (final p in _profiles)
+                    PopupMenuItem(
+                      value: p.name,
+                      child: Text(
+                        p.name == state.profile ? '✓ ${p.name}' : p.name,
+                      ),
+                    ),
+                ],
+              ),
+            if (_providers.isNotEmpty)
+              PopupMenuButton<(String, String)>(
+                icon: const Icon(Icons.memory),
+                tooltip: 'Model',
+                onSelected: (v) => setState(() {
+                  _provider = v.$1;
+                  _model = v.$2.isEmpty ? null : v.$2;
+                }),
+                itemBuilder: (_) => [
+                  for (final pv in _providers) ...[
+                    PopupMenuItem(
+                      value: (pv.provider, ''),
+                      child: Text('${pv.provider} · default'),
+                    ),
+                    for (final m in pv.models)
+                      PopupMenuItem(
+                        value: (pv.provider, m.id),
+                        child: Text('   ${m.label}'),
+                      ),
+                  ],
+                ],
+              ),
+            IconButton(
+              icon: const Icon(Icons.edit_square),
+              tooltip: 'New chat',
+              onPressed: widget.onNewChat ?? _newSession,
             ),
           ],
         ),
-        actions: [
-          if (_profiles.isNotEmpty)
-            PopupMenuButton<String>(
-              icon: const Icon(Icons.person_outline),
-              tooltip: 'Identity',
-              onSelected: state.setProfile,
-              itemBuilder: (_) => [
-                for (final p in _profiles)
-                  PopupMenuItem(
-                    value: p.name,
-                    child: Text(
-                        p.name == state.profile ? '✓ ${p.name}' : p.name),
-                  ),
-              ],
-            ),
-          if (_providers.isNotEmpty)
-            PopupMenuButton<(String, String)>(
-              icon: const Icon(Icons.memory),
-              tooltip: 'Model',
-              onSelected: (v) => setState(() {
-                _provider = v.$1;
-                _model = v.$2.isEmpty ? null : v.$2;
-              }),
-              itemBuilder: (_) => [
-                for (final pv in _providers) ...[
-                  PopupMenuItem(
-                    value: (pv.provider, ''),
-                    child: Text('${pv.provider} · default'),
-                  ),
-                  for (final m in pv.models)
-                    PopupMenuItem(
-                      value: (pv.provider, m.id),
-                      child: Text('   ${m.label}'),
-                    ),
-                ],
-              ],
-            ),
-          IconButton(
-            icon: const Icon(Icons.edit_square),
-            tooltip: 'New chat',
-            onPressed: widget.onNewChat ?? _newSession,
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
-          if (_offline)
-            Container(
-              width: double.infinity,
-              color: scheme.errorContainer,
-              padding: const EdgeInsets.fromLTRB(16, 4, 8, 4),
-              child: Row(
-                children: [
-                  Icon(Icons.cloud_off,
-                      size: 16, color: scheme.onErrorContainer),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text("Can't reach the server",
-                        style: TextStyle(color: scheme.onErrorContainer)),
-                  ),
-                  TextButton(
-                      onPressed: _bootstrap, child: const Text('Retry')),
-                ],
-              ),
-            ),
-          Expanded(
-            child: Stack(
-              children: [
-                Positioned.fill(
-                  child: _messages.isEmpty ? _emptyState() : _messageList(),
-                ),
-                if (!_follow && _messages.isNotEmpty)
-                  Positioned(
-                    bottom: 12,
-                    left: 0,
-                    right: 0,
-                    child: Center(
-                      child: Material(
-                        color: scheme.surfaceContainerHighest,
-                        shape: const StadiumBorder(),
-                        elevation: 2,
-                        child: InkWell(
-                          customBorder: const StadiumBorder(),
-                          onTap: () {
-                            setState(() => _follow = true);
-                            _jumpToEnd();
-                          },
-                          child: const Padding(
-                            padding: EdgeInsets.symmetric(
-                                horizontal: 14, vertical: 8),
-                            child: Icon(Icons.arrow_downward, size: 18),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-          if (_pending.isNotEmpty)
-            SizedBox(
-              height: 72,
-              child: ListView(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                children: [
-                  for (final a in _pending)
-                    Padding(
-                      padding: const EdgeInsets.only(right: 8),
-                      child: Stack(
-                        children: [
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(10),
-                            child: Image.memory(a.bytes,
-                                width: 64, height: 64, fit: BoxFit.cover),
-                          ),
-                          Positioned(
-                            top: 2,
-                            right: 2,
-                            child: GestureDetector(
-                              onTap: () =>
-                                  setState(() => _pending.remove(a)),
-                              child: Container(
-                                padding: const EdgeInsets.all(2),
-                                decoration: const BoxDecoration(
-                                    color: Colors.black54,
-                                    shape: BoxShape.circle),
-                                child: const Icon(Icons.close,
-                                    size: 14, color: Colors.white),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(12, 6, 12, 10),
-              child: Container(
-                padding: const EdgeInsets.fromLTRB(4, 2, 6, 2),
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                  borderRadius: BorderRadius.circular(26),
-                ),
+        body: Column(
+          children: [
+            if (_offline)
+              Container(
+                width: double.infinity,
+                color: scheme.errorContainer,
+                padding: const EdgeInsets.fromLTRB(16, 4, 8, 4),
                 child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    IconButton(
-                      icon: const Icon(Icons.add),
-                      tooltip: 'Attach photo',
-                      onPressed: _sending ? null : _attachPhoto,
+                    Icon(
+                      Icons.cloud_off,
+                      size: 16,
+                      color: scheme.onErrorContainer,
                     ),
+                    const SizedBox(width: 8),
                     Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 10),
-                        child: TextField(
-                          controller: _input,
-                          minLines: 1,
-                          maxLines: 5,
-                          textInputAction: TextInputAction.send,
-                          onSubmitted: (_) => _send(),
-                          decoration: const InputDecoration.collapsed(
-                              hintText: 'Reply to Donna…'),
-                        ),
+                      child: Text(
+                        "Can't reach the server",
+                        style: TextStyle(color: scheme.onErrorContainer),
                       ),
                     ),
-                    const SizedBox(width: 6),
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 4),
-                      child: IconButton.filled(
-                        style: IconButton.styleFrom(
-                          backgroundColor:
-                              Theme.of(context).colorScheme.primary,
-                          minimumSize: const Size(36, 36),
-                        ),
-                        icon: _sending
-                            ? const SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(
-                                    strokeWidth: 2, color: Colors.white))
-                            : const Icon(Icons.arrow_upward, size: 18),
-                        onPressed: _sending ? null : _send,
-                      ),
+                    TextButton(
+                      onPressed: _bootstrap,
+                      child: const Text('Retry'),
                     ),
                   ],
                 ),
               ),
+            Expanded(
+              child: Stack(
+                children: [
+                  Positioned.fill(
+                    child: _messages.isEmpty ? _emptyState() : _messageList(),
+                  ),
+                  if (!_follow && _messages.isNotEmpty)
+                    Positioned(
+                      bottom: 12,
+                      left: 0,
+                      right: 0,
+                      child: Center(
+                        child: Material(
+                          color: scheme.surfaceContainerHighest,
+                          shape: const StadiumBorder(),
+                          elevation: 2,
+                          child: InkWell(
+                            customBorder: const StadiumBorder(),
+                            onTap: () {
+                              setState(() => _follow = true);
+                              _jumpToEnd();
+                            },
+                            child: const Padding(
+                              padding: EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 8,
+                              ),
+                              child: Icon(Icons.arrow_downward, size: 18),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
             ),
-          ),
-        ],
+            if (_pending.isNotEmpty)
+              SizedBox(
+                height: 72,
+                child: ListView(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  children: [
+                    for (final a in _pending)
+                      Padding(
+                        padding: const EdgeInsets.only(right: 8),
+                        child: Stack(
+                          children: [
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(10),
+                              child: Image.memory(
+                                a.bytes,
+                                width: 64,
+                                height: 64,
+                                fit: BoxFit.cover,
+                              ),
+                            ),
+                            Positioned(
+                              top: 2,
+                              right: 2,
+                              child: GestureDetector(
+                                onTap: () => setState(() => _pending.remove(a)),
+                                child: Container(
+                                  padding: const EdgeInsets.all(2),
+                                  decoration: const BoxDecoration(
+                                    color: Colors.black54,
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Icon(
+                                    Icons.close,
+                                    size: 14,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 6, 12, 10),
+                child: Container(
+                  padding: const EdgeInsets.fromLTRB(4, 2, 6, 2),
+                  decoration: BoxDecoration(
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(26),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.add),
+                        tooltip: 'Attach photo',
+                        onPressed: _sending ? null : _attachPhoto,
+                      ),
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          // A hardware Enter sends; Shift+Enter makes a newline.
+                          // Soft keyboards go through textInputAction instead.
+                          child: Focus(
+                            onKeyEvent: (node, event) {
+                              final isEnter =
+                                  event.logicalKey ==
+                                      LogicalKeyboardKey.enter ||
+                                  event.logicalKey ==
+                                      LogicalKeyboardKey.numpadEnter;
+                              if (event is KeyDownEvent &&
+                                  isEnter &&
+                                  !HardwareKeyboard.instance.isShiftPressed) {
+                                _send();
+                                return KeyEventResult.handled;
+                              }
+                              return KeyEventResult.ignored;
+                            },
+                            child: TextField(
+                              controller: _input,
+                              autofocus: _desktop,
+                              minLines: 1,
+                              maxLines: 5,
+                              textInputAction: TextInputAction.send,
+                              onSubmitted: (_) => _send(),
+                              decoration: const InputDecoration.collapsed(
+                                hintText: 'Reply to Donna…',
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 4),
+                        child: IconButton.filled(
+                          style: IconButton.styleFrom(
+                            backgroundColor: Theme.of(
+                              context,
+                            ).colorScheme.primary,
+                            minimumSize: const Size(36, 36),
+                          ),
+                          icon: _sending
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : const Icon(Icons.arrow_upward, size: 18),
+                          onPressed: _sending ? null : _send,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -572,10 +657,11 @@ class _ChatScreenState extends State<ChatScreen> {
         keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
         itemCount: _messages.length,
         itemBuilder: (_, i) => _MessageBubble(
-            msg: _messages[i],
-            onFeedback: _feedback,
-            onRetry: () => _retry(_messages[i]),
-            onToast: _toast),
+          msg: _messages[i],
+          onFeedback: _feedback,
+          onRetry: () => _retry(_messages[i]),
+          onToast: _toast,
+        ),
       ),
     );
   }
@@ -612,10 +698,13 @@ class _ChatScreenState extends State<ChatScreen> {
                     label: Text(s.$2),
                     backgroundColor: Colors.transparent,
                     shape: StadiumBorder(
-                        side: BorderSide(
-                            color: scheme.outline.withValues(alpha: 0.3))),
-                    onPressed:
-                        _sending ? null : () => _send(textOverride: s.$2),
+                      side: BorderSide(
+                        color: scheme.outline.withValues(alpha: 0.3),
+                      ),
+                    ),
+                    onPressed: _sending
+                        ? null
+                        : () => _send(textOverride: s.$2),
                   ),
               ],
             ),
@@ -638,8 +727,12 @@ class _MessageBubble extends StatelessWidget {
   final Future<void> Function(bool up)? onFeedback;
   final VoidCallback? onRetry;
   final void Function(String)? onToast;
-  const _MessageBubble(
-      {required this.msg, this.onFeedback, this.onRetry, this.onToast});
+  const _MessageBubble({
+    required this.msg,
+    this.onFeedback,
+    this.onRetry,
+    this.onToast,
+  });
 
   void _copy(BuildContext context) {
     Clipboard.setData(ClipboardData(text: msg.text));
@@ -678,8 +771,9 @@ class _MessageBubble extends StatelessWidget {
         child: Container(
           margin: const EdgeInsets.symmetric(vertical: 4),
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          constraints:
-              BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.8),
+          constraints: BoxConstraints(
+            maxWidth: MediaQuery.of(context).size.width * 0.8,
+          ),
           decoration: BoxDecoration(
             color: scheme.primaryContainer,
             borderRadius: BorderRadius.circular(18),
@@ -690,8 +784,10 @@ class _MessageBubble extends StatelessWidget {
               if (msg.images > 0)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 4),
-                  child: Text('📷 ${msg.images} image${msg.images > 1 ? "s" : ""}',
-                      style: Theme.of(context).textTheme.bodySmall),
+                  child: Text(
+                    '📷 ${msg.images} image${msg.images > 1 ? "s" : ""}',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
                 ),
               if (msg.text.isNotEmpty) Text(msg.text),
             ],
@@ -723,7 +819,9 @@ class _MessageBubble extends StatelessWidget {
                     visualDensity: VisualDensity.compact,
                     labelStyle: Theme.of(context).textTheme.labelSmall,
                     avatar: const Icon(Icons.build, size: 12),
-                    side: BorderSide(color: scheme.outline.withValues(alpha: 0.3)),
+                    side: BorderSide(
+                      color: scheme.outline.withValues(alpha: 0.3),
+                    ),
                     backgroundColor: Colors.transparent,
                   ),
               ],
@@ -755,30 +853,40 @@ class _MessageBubble extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 if (msg.model.isNotEmpty) ...[
-                  Text(msg.model,
-                      style: Theme.of(context)
-                          .textTheme
-                          .labelSmall
-                          ?.copyWith(color: scheme.outline)),
+                  Text(
+                    msg.model,
+                    style: Theme.of(
+                      context,
+                    ).textTheme.labelSmall?.copyWith(color: scheme.outline),
+                  ),
                   const SizedBox(width: 10),
                 ],
                 InkWell(
                   onTap: () => _copy(context),
-                  child: Icon(Icons.copy_outlined,
-                      size: 14, color: scheme.outline),
+                  child: Icon(
+                    Icons.copy_outlined,
+                    size: 14,
+                    color: scheme.outline,
+                  ),
                 ),
                 if (onFeedback != null) ...[
                   const SizedBox(width: 12),
                   InkWell(
                     onTap: () => onFeedback!(true),
-                    child: Icon(Icons.thumb_up_outlined,
-                        size: 14, color: scheme.outline),
+                    child: Icon(
+                      Icons.thumb_up_outlined,
+                      size: 14,
+                      color: scheme.outline,
+                    ),
                   ),
                   const SizedBox(width: 12),
                   InkWell(
                     onTap: () => onFeedback!(false),
-                    child: Icon(Icons.thumb_down_outlined,
-                        size: 14, color: scheme.outline),
+                    child: Icon(
+                      Icons.thumb_down_outlined,
+                      size: 14,
+                      color: scheme.outline,
+                    ),
                   ),
                 ],
               ],
@@ -801,8 +909,9 @@ class _ActivityIndicator extends StatefulWidget {
 class _ActivityIndicatorState extends State<_ActivityIndicator>
     with SingleTickerProviderStateMixin {
   late final AnimationController _pulse = AnimationController(
-      vsync: this, duration: const Duration(milliseconds: 900))
-    ..repeat(reverse: true);
+    vsync: this,
+    duration: const Duration(milliseconds: 900),
+  )..repeat(reverse: true);
 
   @override
   void dispose() {
@@ -814,16 +923,18 @@ class _ActivityIndicatorState extends State<_ActivityIndicator>
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return FadeTransition(
-      opacity: Tween(begin: 0.35, end: 1.0)
-          .animate(CurvedAnimation(parent: _pulse, curve: Curves.easeInOut)),
+      opacity: Tween(
+        begin: 0.35,
+        end: 1.0,
+      ).animate(CurvedAnimation(parent: _pulse, curve: Curves.easeInOut)),
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 6),
         child: Text(
           widget.label,
-          style: Theme.of(context)
-              .textTheme
-              .bodySmall
-              ?.copyWith(color: scheme.outline, fontStyle: FontStyle.italic),
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+            color: scheme.outline,
+            fontStyle: FontStyle.italic,
+          ),
         ),
       ),
     );
