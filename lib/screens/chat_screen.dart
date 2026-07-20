@@ -1,12 +1,15 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show ScrollDirection;
+import 'package:flutter/services.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../api/models.dart';
 import '../main.dart';
 import '../theme.dart';
+import '../util/format.dart';
 
 /// A live chat with the harness: streaming replies, tool activity, per-session
 /// provider/model override, and photo attachments (v0.12+ servers).
@@ -19,7 +22,11 @@ class ChatScreen extends StatefulWidget {
   /// and the new-chat action is delegated up so the shell can swap sessions.
   final Widget? drawer;
   final VoidCallback? onNewChat;
-  const ChatScreen({super.key, this.sessionId, this.drawer, this.onNewChat});
+
+  /// Pre-fills the composer — used by "Ask Donna" on an inbox delivery.
+  final String? initialText;
+  const ChatScreen(
+      {super.key, this.sessionId, this.drawer, this.onNewChat, this.initialText});
 
   @override
   State<ChatScreen> createState() => _ChatScreenState();
@@ -33,13 +40,23 @@ class _Msg {
   String model = '';
   bool streaming;
   bool isError = false;
+
+  /// Friendly phrase for whatever tool is running right now (streaming only).
+  String? activity;
+
+  /// What the user sent to produce this reply — kept so a failed turn can be
+  /// retried without retyping.
+  String sourceText = '';
+  List<ChatImage> sourceImages = const [];
+
   _Msg(this.role, this.text, {this.images = 0, this.streaming = false});
 }
 
 class _Attachment {
   final String name;
+  final Uint8List bytes;
   final ChatImage image;
-  const _Attachment(this.name, this.image);
+  const _Attachment(this.name, this.bytes, this.image);
 }
 
 class _ChatScreenState extends State<ChatScreen> {
@@ -53,33 +70,49 @@ class _ChatScreenState extends State<ChatScreen> {
   String? _provider; // per-session override, server persists it
   String? _model;
   bool _sending = false;
+  bool _offline = false;
+  bool _follow = true; // autoscroll only while the user is at the bottom
   List<ProfileInfo> _profiles = [];
   List<ProviderModels> _providers = [];
 
   static const _maxImageBytes = 5 << 20; // server-side cap, mirrored
 
+  static const _suggestions = [
+    (Icons.wb_sunny_outlined, 'Give me a brief of my day'),
+    (Icons.today_outlined, "What's on my calendar today?"),
+    (Icons.mail_outline, 'Anything important in my email?'),
+    (Icons.psychology_outlined, 'What do you remember about me?'),
+  ];
+
   @override
   void initState() {
     super.initState();
     _session = widget.sessionId ?? 'app';
+    if (widget.initialText != null) _input.text = widget.initialText!;
     _bootstrap();
   }
 
   Future<void> _bootstrap() async {
     final client = AppScope.of(context).client;
     if (client == null) return;
+    final profile = AppScope.of(context).profile;
+    // Pickers first, independent of history: a fresh session has no history
+    // yet, and that must not cost us the profile/model menus.
     try {
-      final results = await Future.wait([
-        client.profiles(),
-        client.models(),
-        client.sessionHistory(_session,
-            profile: AppScope.of(context).profile),
-      ]);
-      final hist = results[2] as SessionHistory;
+      final results = await Future.wait([client.profiles(), client.models()]);
       if (!mounted) return;
       setState(() {
         _profiles = (results[0] as ProfilesResponse).profiles;
         _providers = results[1] as List<ProviderModels>;
+        _offline = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _offline = true);
+    }
+    try {
+      final hist = await client.sessionHistory(_session, profile: profile);
+      if (!mounted) return;
+      setState(() {
         _provider = hist.provider.isEmpty ? null : hist.provider;
         _model = hist.model.isEmpty ? null : hist.model;
         for (final m in hist.messages.where((m) => m.role != 'tool')) {
@@ -93,7 +126,7 @@ class _ChatScreenState extends State<ChatScreen> {
       });
       _jumpToEnd();
     } catch (_) {
-      // A fresh session has no history; pickers just stay empty until retry.
+      // A fresh session simply has no history yet.
     }
   }
 
@@ -135,27 +168,34 @@ class _ChatScreenState extends State<ChatScreen> {
               : 'image/jpeg');
       setState(() => _pending.add(_Attachment(
           picked.name,
+          bytes,
           ChatImage(mediaType: mime, base64Data: base64Encode(bytes)))));
     } catch (e) {
       _toast('Could not pick an image: $e');
     }
   }
 
-  Future<void> _send() async {
-    final text = _input.text.trim();
-    if ((text.isEmpty && _pending.isEmpty) || _sending) return;
+  Future<void> _send({String? textOverride, List<ChatImage>? imagesOverride}) async {
+    final fromComposer = textOverride == null && imagesOverride == null;
+    final text = textOverride ?? _input.text.trim();
+    final images = imagesOverride ?? [for (final a in _pending) a.image];
+    if ((text.isEmpty && images.isEmpty) || _sending) return;
     final client = AppScope.of(context).client;
     if (client == null) return;
 
-    final images = [for (final a in _pending) a.image];
     final user = _Msg('user', text, images: images.length);
-    final reply = _Msg('assistant', '', streaming: true);
+    final reply = _Msg('assistant', '', streaming: true)
+      ..sourceText = text
+      ..sourceImages = images;
     setState(() {
       _messages.add(user);
       _messages.add(reply);
-      _pending.clear();
-      _input.clear();
+      if (fromComposer) {
+        _pending.clear();
+        _input.clear();
+      }
       _sending = true;
+      _follow = true; // sending means: show me the reply
     });
     _jumpToEnd();
 
@@ -174,10 +214,12 @@ class _ChatScreenState extends State<ChatScreen> {
           switch (ev) {
             case TextDeltaEvent(:final delta):
               reply.text += delta;
+              reply.activity = null;
             case RouteEvent(:final model):
               reply.model = model;
             case ToolStartEvent(:final name):
               reply.tools.add(name);
+              reply.activity = toolPhrase(name);
             case ErrorEvent(:final message):
               reply.isError = true;
               reply.text = reply.text.isEmpty
@@ -192,6 +234,7 @@ class _ChatScreenState extends State<ChatScreen> {
         });
         _jumpToEnd();
       }
+      if (_offline && mounted) _bootstrap(); // the server is clearly back
     } catch (e) {
       if (mounted) {
         setState(() {
@@ -203,10 +246,25 @@ class _ChatScreenState extends State<ChatScreen> {
       if (mounted) {
         setState(() {
           reply.streaming = false;
+          reply.activity = null;
           _sending = false;
         });
       }
     }
+  }
+
+  /// Drop the failed turn (reply + its user bubble) and resend the same input.
+  void _retry(_Msg reply) {
+    if (_sending) return;
+    final i = _messages.indexOf(reply);
+    if (i < 0) return;
+    final text = reply.sourceText;
+    final images = reply.sourceImages;
+    setState(() {
+      _messages.removeAt(i);
+      if (i > 0 && _messages[i - 1].role == 'user') _messages.removeAt(i - 1);
+    });
+    _send(textOverride: text, imagesOverride: images);
   }
 
   void _newSession() {
@@ -219,12 +277,27 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _jumpToEnd() {
+    if (!_follow) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scroll.hasClients) {
+      if (_scroll.hasClients && _follow) {
         _scroll.animateTo(_scroll.position.maxScrollExtent,
             duration: const Duration(milliseconds: 150), curve: Curves.easeOut);
       }
     });
+  }
+
+  /// Reading back unfollows; landing at the bottom follows again. Programmatic
+  /// scrolls never emit [UserScrollNotification], so streaming can't unfollow
+  /// itself.
+  bool _onScrollNotification(ScrollNotification n) {
+    if (n is UserScrollNotification && n.direction == ScrollDirection.forward) {
+      if (_follow) setState(() => _follow = false);
+    } else if (n is ScrollEndNotification) {
+      if (!_follow && n.metrics.pixels >= n.metrics.maxScrollExtent - 80) {
+        setState(() => _follow = true);
+      }
+    }
+    return false;
   }
 
   void _toast(String msg) {
@@ -277,6 +350,7 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   Widget build(BuildContext context) {
     final state = AppScope.of(context);
+    final scheme = Theme.of(context).colorScheme;
     return Scaffold(
       drawer: widget.drawer,
       appBar: AppBar(
@@ -337,46 +411,94 @@ class _ChatScreenState extends State<ChatScreen> {
       ),
       body: Column(
         children: [
+          if (_offline)
+            Container(
+              width: double.infinity,
+              color: scheme.errorContainer,
+              padding: const EdgeInsets.fromLTRB(16, 4, 8, 4),
+              child: Row(
+                children: [
+                  Icon(Icons.cloud_off,
+                      size: 16, color: scheme.onErrorContainer),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text("Can't reach the server",
+                        style: TextStyle(color: scheme.onErrorContainer)),
+                  ),
+                  TextButton(
+                      onPressed: _bootstrap, child: const Text('Retry')),
+                ],
+              ),
+            ),
           Expanded(
-            child: _messages.isEmpty
-                ? Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        DonnaTheme.spark(context, size: 34),
-                        const SizedBox(height: 14),
-                        Text(
-                          DonnaTheme.greeting(),
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontFamily: DonnaTheme.serif,
-                            fontSize: 28,
-                            fontWeight: FontWeight.w500,
-                            color: Theme.of(context).colorScheme.onSurface,
+            child: Stack(
+              children: [
+                Positioned.fill(
+                  child: _messages.isEmpty ? _emptyState() : _messageList(),
+                ),
+                if (!_follow && _messages.isNotEmpty)
+                  Positioned(
+                    bottom: 12,
+                    left: 0,
+                    right: 0,
+                    child: Center(
+                      child: Material(
+                        color: scheme.surfaceContainerHighest,
+                        shape: const StadiumBorder(),
+                        elevation: 2,
+                        child: InkWell(
+                          customBorder: const StadiumBorder(),
+                          onTap: () {
+                            setState(() => _follow = true);
+                            _jumpToEnd();
+                          },
+                          child: const Padding(
+                            padding: EdgeInsets.symmetric(
+                                horizontal: 14, vertical: 8),
+                            child: Icon(Icons.arrow_downward, size: 18),
                           ),
                         ),
-                      ],
+                      ),
                     ),
-                  )
-                : ListView.builder(
-                    controller: _scroll,
-                    padding: const EdgeInsets.all(12),
-                    itemCount: _messages.length,
-                    itemBuilder: (_, i) => _MessageBubble(
-                        msg: _messages[i], onFeedback: _feedback),
                   ),
+              ],
+            ),
           ),
           if (_pending.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              child: Wrap(
-                spacing: 6,
+            SizedBox(
+              height: 72,
+              child: ListView(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
                 children: [
                   for (final a in _pending)
-                    InputChip(
-                      avatar: const Icon(Icons.image, size: 16),
-                      label: Text(a.name, overflow: TextOverflow.ellipsis),
-                      onDeleted: () => setState(() => _pending.remove(a)),
+                    Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: Stack(
+                        children: [
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(10),
+                            child: Image.memory(a.bytes,
+                                width: 64, height: 64, fit: BoxFit.cover),
+                          ),
+                          Positioned(
+                            top: 2,
+                            right: 2,
+                            child: GestureDetector(
+                              onTap: () =>
+                                  setState(() => _pending.remove(a)),
+                              child: Container(
+                                padding: const EdgeInsets.all(2),
+                                decoration: const BoxDecoration(
+                                    color: Colors.black54,
+                                    shape: BoxShape.circle),
+                                child: const Icon(Icons.close,
+                                    size: 14, color: Colors.white),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                 ],
               ),
@@ -441,6 +563,68 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
+  Widget _messageList() {
+    return NotificationListener<ScrollNotification>(
+      onNotification: _onScrollNotification,
+      child: ListView.builder(
+        controller: _scroll,
+        padding: const EdgeInsets.all(12),
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+        itemCount: _messages.length,
+        itemBuilder: (_, i) => _MessageBubble(
+            msg: _messages[i],
+            onFeedback: _feedback,
+            onRetry: () => _retry(_messages[i]),
+            onToast: _toast),
+      ),
+    );
+  }
+
+  Widget _emptyState() {
+    final scheme = Theme.of(context).colorScheme;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            DonnaTheme.spark(context, size: 34),
+            const SizedBox(height: 14),
+            Text(
+              DonnaTheme.greeting(),
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontFamily: DonnaTheme.serif,
+                fontSize: 28,
+                fontWeight: FontWeight.w500,
+                color: scheme.onSurface,
+              ),
+            ),
+            const SizedBox(height: 24),
+            Wrap(
+              alignment: WrapAlignment.center,
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final s in _suggestions)
+                  ActionChip(
+                    avatar: Icon(s.$1, size: 16, color: scheme.primary),
+                    label: Text(s.$2),
+                    backgroundColor: Colors.transparent,
+                    shape: StadiumBorder(
+                        side: BorderSide(
+                            color: scheme.outline.withValues(alpha: 0.3))),
+                    onPressed:
+                        _sending ? null : () => _send(textOverride: s.$2),
+                  ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   void dispose() {
     _input.dispose();
@@ -452,7 +636,16 @@ class _ChatScreenState extends State<ChatScreen> {
 class _MessageBubble extends StatelessWidget {
   final _Msg msg;
   final Future<void> Function(bool up)? onFeedback;
-  const _MessageBubble({required this.msg, this.onFeedback});
+  final VoidCallback? onRetry;
+  final void Function(String)? onToast;
+  const _MessageBubble(
+      {required this.msg, this.onFeedback, this.onRetry, this.onToast});
+
+  void _copy(BuildContext context) {
+    Clipboard.setData(ClipboardData(text: msg.text));
+    HapticFeedback.selectionClick();
+    onToast?.call('Copied');
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -480,45 +673,53 @@ class _MessageBubble extends StatelessWidget {
 
     return Align(
       alignment: Alignment.centerRight,
-      child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 4),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        constraints:
-            BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.8),
-        decoration: BoxDecoration(
-          color: scheme.primaryContainer,
-          borderRadius: BorderRadius.circular(18),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (msg.images > 0)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 4),
-                child: Text('📷 ${msg.images} image${msg.images > 1 ? "s" : ""}',
-                    style: Theme.of(context).textTheme.bodySmall),
-              ),
-            if (msg.text.isNotEmpty) Text(msg.text),
-          ],
+      child: GestureDetector(
+        onLongPress: msg.text.isEmpty ? null : () => _copy(context),
+        child: Container(
+          margin: const EdgeInsets.symmetric(vertical: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          constraints:
+              BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.8),
+          decoration: BoxDecoration(
+            color: scheme.primaryContainer,
+            borderRadius: BorderRadius.circular(18),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (msg.images > 0)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Text('📷 ${msg.images} image${msg.images > 1 ? "s" : ""}',
+                      style: Theme.of(context).textTheme.bodySmall),
+                ),
+              if (msg.text.isNotEmpty) Text(msg.text),
+            ],
+          ),
         ),
       ),
     );
   }
 
   Widget _assistantBody(BuildContext context, ColorScheme scheme) {
+    // Repeated tool calls collapse into one chip with a count.
+    final toolCounts = <String, int>{};
+    for (final t in msg.tools) {
+      toolCounts[t] = (toolCounts[t] ?? 0) + 1;
+    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (msg.tools.isNotEmpty)
+        if (toolCounts.isNotEmpty)
           Padding(
             padding: const EdgeInsets.only(bottom: 6),
             child: Wrap(
               spacing: 4,
               runSpacing: 4,
               children: [
-                for (final t in msg.tools)
+                for (final e in toolCounts.entries)
                   Chip(
-                    label: Text(t),
+                    label: Text(e.value > 1 ? '${e.key} ×${e.value}' : e.key),
                     visualDensity: VisualDensity.compact,
                     labelStyle: Theme.of(context).textTheme.labelSmall,
                     avatar: const Icon(Icons.build, size: 12),
@@ -532,28 +733,42 @@ class _MessageBubble extends StatelessWidget {
           msg.isError
               ? Text(msg.text, style: TextStyle(color: scheme.error))
               : MarkdownBody(data: msg.text, selectable: true),
-        if (msg.streaming && msg.text.isEmpty)
-          const Padding(
-            padding: EdgeInsets.all(4),
-            child: SizedBox(
-                width: 16,
-                height: 16,
-                child: CircularProgressIndicator(strokeWidth: 2)),
+        if (msg.streaming && (msg.text.isEmpty || msg.activity != null))
+          _ActivityIndicator(label: msg.activity ?? 'Thinking…'),
+        if (msg.isError && !msg.streaming && onRetry != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: OutlinedButton.icon(
+              onPressed: onRetry,
+              icon: const Icon(Icons.refresh, size: 16),
+              label: const Text('Retry'),
+              style: OutlinedButton.styleFrom(
+                visualDensity: VisualDensity.compact,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+              ),
+            ),
           ),
-        if (!msg.streaming && msg.text.isNotEmpty)
+        if (!msg.streaming && msg.text.isNotEmpty && !msg.isError)
           Padding(
             padding: const EdgeInsets.only(top: 6),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                if (msg.model.isNotEmpty)
+                if (msg.model.isNotEmpty) ...[
                   Text(msg.model,
                       style: Theme.of(context)
                           .textTheme
                           .labelSmall
                           ?.copyWith(color: scheme.outline)),
-                if (!msg.isError && onFeedback != null) ...[
                   const SizedBox(width: 10),
+                ],
+                InkWell(
+                  onTap: () => _copy(context),
+                  child: Icon(Icons.copy_outlined,
+                      size: 14, color: scheme.outline),
+                ),
+                if (onFeedback != null) ...[
+                  const SizedBox(width: 12),
                   InkWell(
                     onTap: () => onFeedback!(true),
                     child: Icon(Icons.thumb_up_outlined,
@@ -570,6 +785,47 @@ class _MessageBubble extends StatelessWidget {
             ),
           ),
       ],
+    );
+  }
+}
+
+/// The pulsing "Thinking… / Searching the web…" line shown while a turn runs.
+class _ActivityIndicator extends StatefulWidget {
+  final String label;
+  const _ActivityIndicator({required this.label});
+
+  @override
+  State<_ActivityIndicator> createState() => _ActivityIndicatorState();
+}
+
+class _ActivityIndicatorState extends State<_ActivityIndicator>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _pulse = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 900))
+    ..repeat(reverse: true);
+
+  @override
+  void dispose() {
+    _pulse.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return FadeTransition(
+      opacity: Tween(begin: 0.35, end: 1.0)
+          .animate(CurvedAnimation(parent: _pulse, curve: Curves.easeInOut)),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Text(
+          widget.label,
+          style: Theme.of(context)
+              .textTheme
+              .bodySmall
+              ?.copyWith(color: scheme.outline, fontStyle: FontStyle.italic),
+        ),
+      ),
     );
   }
 }

@@ -5,6 +5,7 @@ import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 
 import '../api/models.dart';
 import '../main.dart';
+import 'chat_screen.dart';
 
 /// The durable feed of everything Donna delivered — morning briefs, digests,
 /// task results. Push banners announce; this is where they live.
@@ -47,6 +48,20 @@ class InboxScreenState extends State<InboxScreen> {
     } catch (e) {
       if (mounted) setState(() => _error = e.toString());
     }
+  }
+
+  /// Start a fresh chat with the delivery quoted, so "what does this mean?"
+  /// is one tap instead of a copy-paste round trip.
+  void _askAbout(DeliveryItem it) {
+    final snippet =
+        it.text.length > 300 ? '${it.text.substring(0, 300)}…' : it.text;
+    final quoted = snippet.split('\n').map((l) => '> $l').join('\n');
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => ChatScreen(
+        sessionId: 'app-${DateTime.now().millisecondsSinceEpoch}',
+        initialText: 'About this delivery:\n$quoted\n\n',
+      ),
+    ));
   }
 
   /// Mark everything read — called when the tab becomes visible.
@@ -126,6 +141,22 @@ class InboxScreenState extends State<InboxScreen> {
                                   const SizedBox(height: 6),
                                   MarkdownBody(
                                       data: it.text, selectable: true),
+                                  Align(
+                                    alignment: Alignment.centerRight,
+                                    child: TextButton.icon(
+                                      style: TextButton.styleFrom(
+                                        visualDensity: VisualDensity.compact,
+                                        textStyle: Theme.of(context)
+                                            .textTheme
+                                            .labelSmall,
+                                      ),
+                                      icon: const Icon(
+                                          Icons.chat_bubble_outline,
+                                          size: 14),
+                                      label: const Text('Ask Donna'),
+                                      onPressed: () => _askAbout(it),
+                                    ),
+                                  ),
                                 ],
                               ),
                             ),

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../api/models.dart';
 import '../main.dart';
 import '../push/push_service.dart';
+import '../util/format.dart';
 import 'chat_screen.dart';
 import 'inbox_screen.dart';
 import 'sessions_screen.dart';
@@ -149,6 +150,13 @@ class _DonnaDrawerState extends State<DonnaDrawer> {
                               s.title.isEmpty ? s.id : s.title,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
+                            ),
+                            trailing: Text(
+                              relativeTime(s.updated),
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .labelSmall
+                                  ?.copyWith(color: scheme.outline),
                             ),
                             onTap: () {
                               Navigator.pop(context);

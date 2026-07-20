@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../api/models.dart';
 import '../main.dart';
+import '../util/format.dart';
 import 'chat_screen.dart';
 
 /// Conversations, Claude-app style: newest first, auto-titled by the opening
@@ -78,17 +79,6 @@ class _SessionsScreenState extends State<SessionsScreen> {
     }
   }
 
-  static String _relative(DateTime? t) {
-    if (t == null) return '';
-    final d = DateTime.now().difference(t.toLocal());
-    if (d.inMinutes < 1) return 'now';
-    if (d.inMinutes < 60) return '${d.inMinutes}m';
-    if (d.inHours < 24) return '${d.inHours}h';
-    if (d.inDays < 7) return '${d.inDays}d';
-    final local = t.toLocal();
-    return '${local.day}/${local.month}';
-  }
-
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
@@ -157,7 +147,7 @@ class _SessionsScreenState extends State<SessionsScreen> {
                                 maxLines: 2,
                                 overflow: TextOverflow.ellipsis,
                               ),
-                              trailing: Text(_relative(s.updated),
+                              trailing: Text(relativeTime(s.updated),
                                   style: Theme.of(context)
                                       .textTheme
                                       .labelSmall
