@@ -117,7 +117,11 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             for (final pv in _providers) ...[
               ListTile(
-                title: Text('${pv.provider} · default'),
+                title: Text(
+                  providerVendor(pv.provider).isEmpty
+                      ? '${pv.provider} · default'
+                      : '${pv.provider} (${providerVendor(pv.provider)}) · default',
+                ),
                 trailing:
                     state.prefProvider == pv.provider && state.prefModel.isEmpty
                     ? const Icon(Icons.check)
@@ -152,16 +156,20 @@ class _HomeScreenState extends State<HomeScreen> {
   String get _modelLabel {
     final state = AppScope.of(context);
     if (state.prefProvider.isEmpty) return 'Auto — the server routes';
-    if (state.prefModel.isEmpty) return '${state.prefProvider} · default';
+    final vendor = providerVendor(state.prefProvider);
+    final prov = vendor.isEmpty
+        ? state.prefProvider
+        : '${state.prefProvider} ($vendor)';
+    if (state.prefModel.isEmpty) return '$prov · default';
     for (final pv in _providers) {
       if (pv.provider != state.prefProvider) continue;
       for (final m in pv.models) {
         if (m.id == state.prefModel) {
-          return '${state.prefProvider} · ${m.label}';
+          return '$prov · ${m.label}';
         }
       }
     }
-    return '${state.prefProvider} · ${state.prefModel}';
+    return '$prov · ${state.prefModel}';
   }
 
   @override

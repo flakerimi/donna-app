@@ -11,6 +11,7 @@ import '../api/models.dart';
 import '../main.dart';
 import '../theme.dart';
 import '../util/format.dart';
+import '../util/window.dart';
 
 /// A live chat with the harness: streaming replies, tool activity, per-session
 /// provider/model override, and photo attachments (v0.12+ servers).
@@ -44,6 +45,7 @@ class _Msg {
   final List<String> tools = [];
   int images;
   String model = '';
+  String tier = ''; // fast | balanced | reasoning, from the route event
   bool streaming;
   bool isError = false;
 
@@ -78,6 +80,8 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _sending = false;
   bool _offline = false;
   bool _follow = true; // autoscroll only while the user is at the bottom
+  String _lastModel = ''; // most recent routed model + tier, for the title bar
+  String _lastTier = '';
   List<ProfileInfo> _profiles = [];
   List<ProviderModels> _providers = [];
 
@@ -102,7 +106,11 @@ class _ChatScreenState extends State<ChatScreen> {
     super.initState();
     _session = widget.sessionId ?? 'app';
     if (widget.initialText != null) _input.text = widget.initialText!;
-    _bootstrap();
+    // Deferred: AppScope.of (an inherited lookup) must not run inside
+    // initState — debug builds assert on it.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _bootstrap();
+    });
   }
 
   Future<void> _bootstrap() async {
@@ -148,6 +156,25 @@ class _ChatScreenState extends State<ChatScreen> {
     } catch (_) {
       // A fresh session simply has no history yet.
     }
+    _updateTitle();
+  }
+
+  /// The title bar carries the currents: profile · provider (vendor) · model
+  /// · tier. Updated on ready/route events, so it tracks routing live.
+  void _updateTitle() {
+    if (!mounted) return;
+    final state = AppScope.of(context);
+    final prof = state.profile.isEmpty ? 'default' : state.profile;
+    final prov = _provider ?? 'auto';
+    final vendor = providerVendor(prov);
+    final model = _lastModel.isNotEmpty ? _lastModel : (_model ?? '');
+    final parts = [
+      prof,
+      vendor.isEmpty ? prov : '$prov ($vendor)',
+      if (model.isNotEmpty) model,
+      if (_lastTier.isNotEmpty) _lastTier,
+    ];
+    WindowTitle.set('Donna — ${parts.join(' · ')}');
   }
 
   Future<void> _attachPhoto() async {
@@ -249,8 +276,12 @@ class _ChatScreenState extends State<ChatScreen> {
             case TextDeltaEvent(:final delta):
               reply.text += delta;
               reply.activity = null;
-            case RouteEvent(:final model):
+            case RouteEvent(:final model, :final tier):
               reply.model = model;
+              reply.tier = tier;
+              _lastModel = model;
+              _lastTier = tier;
+              _updateTitle();
             case ToolStartEvent(:final name):
               reply.tools.add(name);
               reply.activity = toolPhrase(name);
@@ -262,6 +293,7 @@ class _ChatScreenState extends State<ChatScreen> {
             case ReadyEvent(:final provider, :final model):
               if (provider.isNotEmpty) _provider = provider;
               if (model.isNotEmpty) _model = model;
+              _updateTitle();
             default:
               break;
           }
@@ -405,7 +437,7 @@ class _ChatScreenState extends State<ChatScreen> {
             children: [
               const Text('Donna'),
               Text(
-                '${state.profile.isEmpty ? "default" : state.profile} · ${_provider ?? "auto"}',
+                '${state.profile.isEmpty ? "default" : state.profile} · ${_provider == null ? "auto" : "$_provider${providerVendor(_provider!).isEmpty ? "" : " (${providerVendor(_provider!)})"}"}',
                 style: Theme.of(context).textTheme.labelSmall?.copyWith(
                   color: Theme.of(context).colorScheme.outline,
                   fontFamily: null,
@@ -861,7 +893,7 @@ class _MessageBubble extends StatelessWidget {
               children: [
                 if (msg.model.isNotEmpty) ...[
                   Text(
-                    msg.model,
+                    '${msg.model}${msg.tier.isEmpty ? '' : ' · ${msg.tier}'}',
                     style: Theme.of(
                       context,
                     ).textTheme.labelSmall?.copyWith(color: scheme.outline),

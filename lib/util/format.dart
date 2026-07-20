@@ -13,6 +13,27 @@ String relativeTime(DateTime? t) {
   return '${local.day}/${local.month}';
 }
 
+/// Which vendor actually serves a provider slug — "kimi" is Moonshot direct,
+/// not Fireworks/Together hosting a Kimi model.
+String providerVendor(String slug) => switch (slug) {
+  'kimi' || 'moonshot' => 'Moonshot',
+  'fireworks' => 'Fireworks AI',
+  'together' => 'Together',
+  'deepseek' => 'DeepSeek',
+  'openai' => 'OpenAI',
+  'claude' || 'anthropic' => 'Anthropic',
+  'gemini' => 'Google',
+  'mistral' => 'Mistral',
+  'openrouter' => 'OpenRouter',
+  'qwen' => 'Alibaba',
+  'zai' => 'Z.ai',
+  'xai' || 'grok' => 'xAI',
+  'mimo' => 'Xiaomi',
+  'ollama' || 'lmstudio' => 'local',
+  'apple' => 'on-device',
+  _ => '',
+};
+
 /// Future counterpart of [relativeTime]: "in 5m", "in 3h", "in 2d".
 String relativeUntil(DateTime? t) {
   if (t == null) return '';

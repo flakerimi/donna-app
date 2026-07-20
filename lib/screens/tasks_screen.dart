@@ -22,7 +22,10 @@ class _TasksScreenState extends State<TasksScreen> {
   @override
   void initState() {
     super.initState();
-    _refresh();
+    // Deferred: AppScope.of must not run inside initState (debug asserts).
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _refresh();
+    });
     // Light polling keeps running jobs visibly progressing.
     _poll = Timer.periodic(const Duration(seconds: 20), (_) => _refresh());
   }
