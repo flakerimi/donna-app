@@ -20,6 +20,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String? _connectorsError;
   Timer? _poll;
   bool _awaitingConsent = false;
+  bool _connectingClaude = false;
 
   @override
   void initState() {
@@ -85,50 +86,52 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// page, which ends on a code the user copies back into a dialog here (the
   /// deployed server has no reachable localhost callback).
   Future<void> _connectClaude() async {
+    if (_connectingClaude) return; // a second tap would strand the first state
     final state = AppScope.of(context);
+    final client = state.client;
+    if (client == null) return;
+    setState(() => _connectingClaude = true);
+    final controller = TextEditingController();
     try {
-      final start = await state.client!.claudeAuthStart(profile: state.profile);
+      final start = await client.claudeAuthStart(profile: state.profile);
       if (start.url.isEmpty) throw Exception('server returned no authorize URL');
       await launchUrl(Uri.parse(start.url), mode: LaunchMode.externalApplication);
       if (!mounted) return;
       final code = await showDialog<String>(
         context: context,
-        builder: (context) {
-          final controller = TextEditingController();
-          return AlertDialog(
-            title: const Text('Paste the code'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text(
-                  'After you approve in the browser, Claude shows a code. Paste it here.',
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: controller,
-                  autofocus: true,
-                  decoration: const InputDecoration(
-                    hintText: 'code…',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Cancel'),
+        builder: (context) => AlertDialog(
+          title: const Text('Paste the code'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'After you approve in the browser, Claude shows a code. Paste it here.',
               ),
-              FilledButton(
-                onPressed: () => Navigator.pop(context, controller.text.trim()),
-                child: const Text('Connect'),
+              const SizedBox(height: 12),
+              TextField(
+                controller: controller,
+                autofocus: true,
+                decoration: const InputDecoration(
+                  hintText: 'code…',
+                  border: OutlineInputBorder(),
+                ),
               ),
             ],
-          );
-        },
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, controller.text.trim()),
+              child: const Text('Connect'),
+            ),
+          ],
+        ),
       );
       if (code == null || code.isEmpty || !mounted) return;
-      await state.client!.claudeAuthComplete(
+      await client.claudeAuthComplete(
         code: code,
         state: start.state,
         profile: state.profile,
@@ -145,6 +148,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
           context,
         ).showSnackBar(SnackBar(content: Text('Claude connect failed: $e')));
       }
+    } finally {
+      controller.dispose();
+      if (mounted) setState(() => _connectingClaude = false);
     }
   }
 

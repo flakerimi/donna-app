@@ -93,6 +93,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   _Msg? _live; // the assistant bubble the current turn streams into
   int _lastSeq = 0; // last SSE id seen — the resume cursor
   int _resumeAttempt = 0;
+  int _attachGen = 0; // bumps per (re)attach; stale backoff timers self-cancel
   bool _gotDone = false;
   Timer? _healthTimer; // keeps the offline banner honest between sends
 
@@ -328,6 +329,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   /// Swap the active subscription onto [stream]. Errors and early stream ends
   /// go through recovery instead of straight to a red error row.
   void _listen(Stream<ChatEvent> stream, _Msg reply) {
+    _attachGen++; // invalidate any backoff timer from the previous attach
     _sub?.cancel();
     _sub = stream.listen(
       (ev) => _onEvent(ev, reply),
@@ -405,8 +407,11 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     }
     final delay = Duration(seconds: 1 << _resumeAttempt);
     _resumeAttempt++;
+    final gen = _attachGen;
     await Future.delayed(delay);
-    if (!mounted || _gotDone) return;
+    // A newer attach (lifecycle resume, fresh send) supersedes this timer —
+    // tearing down its healthy stream to open another would be pure churn.
+    if (!mounted || _gotDone || gen != _attachGen) return;
     _reattach(reply);
   }
 
@@ -421,13 +426,19 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   }
 
   /// The server said a turn is already running for this session (409): put the
-  /// typed text back, attach to the running turn instead.
+  /// typed message (and any attachments) back, attach to the running turn.
   void _handleBusy(_Msg reply) {
     setState(() {
       final i = _messages.indexOf(reply);
       if (i > 0 && _messages[i - 1].role == 'user') {
-        _input.text = _messages[i - 1].text;
         _messages.removeAt(i - 1);
+      }
+      // Restore the draft without clobbering anything typed since.
+      if (_input.text.isEmpty) _input.text = reply.sourceText;
+      for (final img in reply.sourceImages) {
+        _pending.add(
+          _Attachment('photo', base64Decode(img.base64Data), img),
+        );
       }
       _messages.remove(reply);
       var live = _messages.where((m) => m.streaming).lastOrNull;
@@ -448,11 +459,13 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   }
 
   /// The resume cursor fell out of the server's journal window: rebuild from
-  /// persisted history, then keep following the live stream.
+  /// persisted history, then keep following the live stream. The subscription
+  /// is paused (buffered) for the fetch so no live frame is lost to the wipe.
   Future<void> _handleReset(_Msg reply) async {
     final state = AppScope.of(context);
     final client = state.client;
     if (client == null) return;
+    _sub?.pause();
     try {
       final hist = await client.sessionHistory(_session, profile: state.profile);
       if (!mounted) return;
@@ -469,12 +482,14 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         if (_sending && !_gotDone) {
           reply.text = '';
           reply.tools.clear();
-          _messages.add(reply); // live frames keep landing here
+          _messages.add(reply); // buffered live frames land here on resume
         }
       });
       _jumpToEnd();
     } catch (_) {
       // History fetch failed; the live frames still tell the rest of the turn.
+    } finally {
+      _sub?.resume();
     }
   }
 
@@ -671,7 +686,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                       ),
                     ),
                     TextButton(
-                      onPressed: _bootstrap,
+                      // Mid-turn, _bootstrap would clear the streaming bubble.
+                      onPressed: _sending ? null : _bootstrap,
                       child: const Text('Retry'),
                     ),
                   ],

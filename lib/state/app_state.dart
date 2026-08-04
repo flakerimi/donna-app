@@ -37,9 +37,16 @@ class AppState extends ChangeNotifier {
   Future<void> load() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      await secure.migrate(prefs); // legacy plain-text token → Keychain
+      // Keychain access can fail (sandbox entitlements, locked keychain) —
+      // that must degrade to "not connected", never crash startup.
+      try {
+        await secure.migrate(prefs); // legacy plain-text token → Keychain
+        token = await secure.readToken() ?? '';
+      } catch (e) {
+        debugPrint('secure store unavailable: $e');
+        token = '';
+      }
       serverUrl = prefs.getString(_kUrl) ?? '';
-      token = await secure.readToken() ?? '';
       profile = prefs.getString(_kProfile) ?? '';
       prefProvider = prefs.getString(_kPrefProvider) ?? '';
       prefModel = prefs.getString(_kPrefModel) ?? '';
