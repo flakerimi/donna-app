@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart' show defaultTargetPlatform;
@@ -7,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../api/harness_client.dart';
 import '../api/models.dart';
 import '../main.dart';
 import '../theme.dart';
@@ -67,7 +69,7 @@ class _Attachment {
   const _Attachment(this.name, this.bytes, this.image);
 }
 
-class _ChatScreenState extends State<ChatScreen> {
+class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   final _input = TextEditingController();
   final _scroll = ScrollController();
   final _picker = ImagePicker();
@@ -84,6 +86,14 @@ class _ChatScreenState extends State<ChatScreen> {
   String _lastTier = '';
   List<ProfileInfo> _profiles = [];
   List<ProviderModels> _providers = [];
+
+  // Turn-survival state: the server keeps the turn running when this app is
+  // backgrounded; these let us re-attach to the live stream where we left off.
+  StreamSubscription<ChatEvent>? _sub;
+  _Msg? _live; // the assistant bubble the current turn streams into
+  int _lastSeq = 0; // last SSE id seen — the resume cursor
+  int _resumeAttempt = 0;
+  bool _gotDone = false;
 
   static const _maxImageBytes = 5 << 20; // server-side cap, mirrored
 
@@ -104,6 +114,7 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _session = widget.sessionId ?? 'app';
     if (widget.initialText != null) _input.text = widget.initialText!;
     // Deferred: AppScope.of (an inherited lookup) must not run inside
@@ -111,6 +122,17 @@ class _ChatScreenState extends State<ChatScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _bootstrap();
     });
+  }
+
+  /// Coming back to the foreground: iOS tore down our socket, but the server
+  /// kept the turn running — re-attach to the live stream where we left off.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && _sending && !_gotDone) {
+      _resumeAttempt = 0;
+      final live = _live;
+      if (live != null) _reattach(live);
+    }
   }
 
   Future<void> _bootstrap() async {
@@ -260,62 +282,173 @@ class _ChatScreenState extends State<ChatScreen> {
     });
     _jumpToEnd();
 
-    try {
-      final stream = client.chat(
+    _gotDone = false;
+    _lastSeq = 0;
+    _resumeAttempt = 0;
+    _live = reply;
+    _listen(
+      client.chat(
         message: text,
         profile: AppScope.of(context).profile,
         session: _session,
         provider: _provider,
         model: _model,
         images: images,
-      );
-      await for (final ev in stream) {
-        if (!mounted) return;
-        setState(() {
-          switch (ev) {
-            case TextDeltaEvent(:final delta):
-              reply.text += delta;
-              reply.activity = null;
-            case RouteEvent(:final model, :final tier):
-              reply.model = model;
-              reply.tier = tier;
-              _lastModel = model;
-              _lastTier = tier;
-              _updateTitle();
-            case ToolStartEvent(:final name):
-              reply.tools.add(name);
-              reply.activity = toolPhrase(name);
-            case ErrorEvent(:final message):
-              reply.isError = true;
-              reply.text = reply.text.isEmpty
-                  ? message
-                  : '${reply.text}\n\n⚠ $message';
-            case ReadyEvent(:final provider, :final model):
-              if (provider.isNotEmpty) _provider = provider;
-              if (model.isNotEmpty) _model = model;
-              _updateTitle();
-            default:
-              break;
-          }
-        });
-        _jumpToEnd();
-      }
-      if (_offline && mounted) _bootstrap(); // the server is clearly back
-    } catch (e) {
-      if (mounted) {
-        setState(() {
+      ),
+      reply,
+    );
+  }
+
+  /// Swap the active subscription onto [stream]. Errors and early stream ends
+  /// go through recovery instead of straight to a red error row.
+  void _listen(Stream<ChatEvent> stream, _Msg reply) {
+    _sub?.cancel();
+    _sub = stream.listen(
+      (ev) => _onEvent(ev, reply),
+      onError: (Object e) => _recover(reply, e),
+      onDone: () {
+        // A stream that ends without a done frame is a dropped connection.
+        if (!_gotDone && _sending) _recover(reply, null);
+      },
+    );
+  }
+
+  void _onEvent(ChatEvent ev, _Msg reply) {
+    if (!mounted) return;
+    if (ev.seq > 0) _lastSeq = ev.seq;
+    if (ev is ResetEvent) {
+      _handleReset(reply);
+      return;
+    }
+    _resumeAttempt = 0; // data flowing again — reset the backoff
+    setState(() {
+      switch (ev) {
+        case TextDeltaEvent(:final delta):
+          reply.text += delta;
+          reply.activity = null;
+        case RouteEvent(:final model, :final tier):
+          reply.model = model;
+          reply.tier = tier;
+          _lastModel = model;
+          _lastTier = tier;
+          _updateTitle();
+        case ToolStartEvent(:final name):
+          reply.tools.add(name);
+          reply.activity = toolPhrase(name);
+        case ErrorEvent(:final message):
           reply.isError = true;
-          reply.text = e.toString();
-        });
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
+          reply.text = reply.text.isEmpty
+              ? message
+              : '${reply.text}\n\n⚠ $message';
+        case ReadyEvent(:final provider, :final model):
+          if (provider.isNotEmpty) _provider = provider;
+          if (model.isNotEmpty) _model = model;
+          _updateTitle();
+        case DoneEvent():
+          _gotDone = true;
+          _live = null;
           reply.streaming = false;
           reply.activity = null;
           _sending = false;
-        });
+        default:
+          break;
       }
+    });
+    _jumpToEnd();
+    if (_gotDone && _offline) _bootstrap(); // the server is clearly back
+  }
+
+  /// A dropped stream mid-turn: quietly re-attach with backoff (1s/2s/4s).
+  /// Only after three failed attempts does the red error row appear.
+  Future<void> _recover(_Msg reply, Object? err) async {
+    if (!mounted || _gotDone) return;
+    if (err is HarnessApiException && err.status == 409) {
+      _handleBusy(reply);
+      return;
+    }
+    if (_resumeAttempt >= 3) {
+      setState(() {
+        reply.isError = true;
+        if (reply.text.isEmpty) reply.text = err?.toString() ?? 'Connection lost';
+        reply.streaming = false;
+        reply.activity = null;
+        _sending = false;
+        _live = null;
+      });
+      return;
+    }
+    final delay = Duration(seconds: 1 << _resumeAttempt);
+    _resumeAttempt++;
+    await Future.delayed(delay);
+    if (!mounted || _gotDone) return;
+    _reattach(reply);
+  }
+
+  void _reattach(_Msg reply) {
+    final state = AppScope.of(context);
+    final client = state.client;
+    if (client == null) return;
+    _listen(
+      client.resume(session: _session, profile: state.profile, after: _lastSeq),
+      reply,
+    );
+  }
+
+  /// The server said a turn is already running for this session (409): put the
+  /// typed text back, attach to the running turn instead.
+  void _handleBusy(_Msg reply) {
+    setState(() {
+      final i = _messages.indexOf(reply);
+      if (i > 0 && _messages[i - 1].role == 'user') {
+        _input.text = _messages[i - 1].text;
+        _messages.removeAt(i - 1);
+      }
+      _messages.remove(reply);
+      var live = _messages.where((m) => m.streaming).lastOrNull;
+      if (live == null) {
+        live = _Msg('assistant', '', streaming: true);
+        _messages.add(live);
+      }
+      // Resume replays the running turn from the start; clear so nothing dupes.
+      live.text = '';
+      live.tools.clear();
+      _live = live;
+      _lastSeq = 0;
+      _gotDone = false;
+      _sending = true;
+    });
+    _toast('Donna is still finishing the previous reply');
+    _reattach(_live!);
+  }
+
+  /// The resume cursor fell out of the server's journal window: rebuild from
+  /// persisted history, then keep following the live stream.
+  Future<void> _handleReset(_Msg reply) async {
+    final state = AppScope.of(context);
+    final client = state.client;
+    if (client == null) return;
+    try {
+      final hist = await client.sessionHistory(_session, profile: state.profile);
+      if (!mounted) return;
+      setState(() {
+        _messages.clear();
+        for (final m in hist.messages.where((m) => m.role != 'tool')) {
+          final text = m.text;
+          final tools = m.toolCalls;
+          if (text.isEmpty && tools.isEmpty && m.imageCount == 0) continue;
+          final msg = _Msg(m.role, text, images: m.imageCount);
+          msg.tools.addAll(tools);
+          _messages.add(msg);
+        }
+        if (_sending && !_gotDone) {
+          reply.text = '';
+          reply.tools.clear();
+          _messages.add(reply); // live frames keep landing here
+        }
+      });
+      _jumpToEnd();
+    } catch (_) {
+      // History fetch failed; the live frames still tell the rest of the turn.
     }
   }
 
@@ -755,6 +888,8 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _sub?.cancel();
     _input.dispose();
     _scroll.dispose();
     super.dispose();
