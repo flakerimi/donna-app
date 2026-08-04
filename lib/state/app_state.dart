@@ -8,13 +8,17 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../api/harness_client.dart';
 import '../config.dart';
+import '../util/secure_store.dart';
 
 class AppState extends ChangeNotifier {
   static const _kUrl = 'server_url';
-  static const _kToken = 'api_token';
   static const _kProfile = 'profile';
   static const _kPrefProvider = 'pref_provider';
   static const _kPrefModel = 'pref_model';
+
+  /// Keychain-backed token storage; injectable for tests.
+  final SecureStore secure;
+  AppState({SecureStore? secureStore}) : secure = secureStore ?? SecureStore();
 
   String serverUrl = '';
   String token = '';
@@ -33,8 +37,9 @@ class AppState extends ChangeNotifier {
   Future<void> load() async {
     try {
       final prefs = await SharedPreferences.getInstance();
+      await secure.migrate(prefs); // legacy plain-text token → Keychain
       serverUrl = prefs.getString(_kUrl) ?? '';
-      token = prefs.getString(_kToken) ?? '';
+      token = await secure.readToken() ?? '';
       profile = prefs.getString(_kProfile) ?? '';
       prefProvider = prefs.getString(_kPrefProvider) ?? '';
       prefModel = prefs.getString(_kPrefModel) ?? '';
@@ -67,7 +72,7 @@ class AppState extends ChangeNotifier {
     client = HarnessClient(baseUrl: serverUrl, token: token);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_kUrl, serverUrl);
-    await prefs.setString(_kToken, token);
+    await secure.writeToken(token);
     await prefs.setString(_kProfile, profile);
     notifyListeners();
   }
@@ -96,7 +101,7 @@ class AppState extends ChangeNotifier {
     profile = '';
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_kUrl);
-    await prefs.remove(_kToken);
+    await secure.deleteToken();
     await prefs.remove(_kProfile);
     notifyListeners();
   }
