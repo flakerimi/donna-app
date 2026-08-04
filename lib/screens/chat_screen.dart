@@ -94,6 +94,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   int _lastSeq = 0; // last SSE id seen — the resume cursor
   int _resumeAttempt = 0;
   bool _gotDone = false;
+  Timer? _healthTimer; // keeps the offline banner honest between sends
 
   static const _maxImageBytes = 5 << 20; // server-side cap, mirrored
 
@@ -122,17 +123,41 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _bootstrap();
     });
+    _healthTimer = Timer.periodic(
+      const Duration(seconds: 30),
+      (_) => _probeHealth(),
+    );
   }
 
   /// Coming back to the foreground: iOS tore down our socket, but the server
   /// kept the turn running — re-attach to the live stream where we left off.
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed && _sending && !_gotDone) {
+    if (state != AppLifecycleState.resumed) return;
+    if (_sending && !_gotDone) {
       _resumeAttempt = 0;
       final live = _live;
       if (live != null) _reattach(live);
+    } else {
+      _probeHealth();
     }
+  }
+
+  /// Cheap /healthz probe: flips the offline banner both ways without waiting
+  /// for a send to fail. Skipped mid-turn — a streaming reply is proof enough.
+  Future<void> _probeHealth() async {
+    if (!mounted || _sending) return;
+    final client = AppScope.of(context).client;
+    if (client == null) return;
+    bool ok;
+    try {
+      ok = await client.health();
+    } catch (_) {
+      ok = false;
+    }
+    if (!mounted || _offline == !ok) return;
+    setState(() => _offline = !ok);
+    if (ok) _bootstrap(); // back online: reload pickers/history if needed
   }
 
   Future<void> _bootstrap() async {
@@ -165,6 +190,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       setState(() {
         _provider = hist.provider.isEmpty ? null : hist.provider;
         _model = hist.model.isEmpty ? null : hist.model;
+        _messages.clear(); // re-bootstrap (offline recovery) must not duplicate
         for (final m in hist.messages.where((m) => m.role != 'tool')) {
           final text = m.text;
           final tools = m.toolCalls;
@@ -889,6 +915,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _healthTimer?.cancel();
     _sub?.cancel();
     _input.dispose();
     _scroll.dispose();
