@@ -238,11 +238,44 @@ class HarnessClient {
       final body = await res.stream.bytesToString();
       throw HarnessApiException(res.statusCode, _errorOf(body));
     }
+    yield* _sse(res);
+  }
 
+  /// GET /v1/chat/stream — re-attach to a session's turn: journal replay after
+  /// [after], then live frames until the turn ends. The stream also ends right
+  /// after replay when no turn is running.
+  Stream<ChatEvent> resume({
+    required String session,
+    String? profile,
+    int after = 0,
+  }) async* {
+    final req = http.Request(
+      'GET',
+      _u('/v1/chat/stream', {
+        'session': session,
+        if (profile != null && profile.isNotEmpty) 'profile': profile,
+        'after': '$after',
+      }),
+    )..headers.addAll(_auth);
+
+    final res = await _http.send(req);
+    if (res.statusCode != 200) {
+      final body = await res.stream.bytesToString();
+      throw HarnessApiException(res.statusCode, _errorOf(body));
+    }
+    yield* _sse(res);
+  }
+
+  /// Parses an SSE body into [ChatEvent]s, carrying each frame's `id:` line
+  /// as [ChatEvent.seq] so callers can resume from where a stream broke.
+  Stream<ChatEvent> _sse(http.StreamedResponse res) async* {
     var event = 'message';
+    var seq = 0;
     await for (final line
         in res.stream.transform(utf8.decoder).transform(const LineSplitter())) {
-      if (line.startsWith('event: ')) {
+      if (line.startsWith('id: ')) {
+        seq = int.tryParse(line.substring(4).trim()) ?? seq;
+      } else if (line.startsWith('event: ')) {
         event = line.substring(7).trim();
       } else if (line.startsWith('data: ')) {
         final Object? decoded;
@@ -253,10 +286,11 @@ class HarnessClient {
         }
         if (decoded is Map<String, dynamic>) {
           final ev = ChatEvent.parse(event, decoded);
-          if (ev != null) yield ev;
+          if (ev != null) yield ev..seq = seq;
         }
       } else if (line.isEmpty) {
         event = 'message'; // frame boundary resets the event name
+        seq = 0;
       }
     }
   }

@@ -288,9 +288,13 @@ class ChatImage {
   };
 }
 
-/// One SSE frame from POST /v1/chat.
+/// One SSE frame from POST /v1/chat or GET /v1/chat/stream.
 sealed class ChatEvent {
-  const ChatEvent();
+  ChatEvent();
+
+  /// Server-assigned frame id (`id:` line). The client resumes an interrupted
+  /// stream from its last seen seq; 0 means the frame carried none.
+  int seq = 0;
 
   static ChatEvent? parse(String event, Map<String, dynamic> d) {
     switch (event) {
@@ -330,6 +334,8 @@ sealed class ChatEvent {
         return ErrorEvent(d['error'] as String? ?? 'unknown error');
       case 'done':
         return DoneEvent((d['turns'] as num? ?? 0).toInt());
+      case 'reset':
+        return ResetEvent();
     }
     return null; // unknown event kinds are skipped, not fatal
   }
@@ -337,7 +343,7 @@ sealed class ChatEvent {
 
 class ReadyEvent extends ChatEvent {
   final String profile, session, provider, model;
-  const ReadyEvent({
+  ReadyEvent({
     required this.profile,
     required this.session,
     required this.provider,
@@ -347,23 +353,23 @@ class ReadyEvent extends ChatEvent {
 
 class RouteEvent extends ChatEvent {
   final String model, tier;
-  const RouteEvent({required this.model, required this.tier});
+  RouteEvent({required this.model, required this.tier});
 }
 
 class TextDeltaEvent extends ChatEvent {
   final String delta;
-  const TextDeltaEvent(this.delta);
+  TextDeltaEvent(this.delta);
 }
 
 class ToolStartEvent extends ChatEvent {
   final String name, id;
-  const ToolStartEvent({required this.name, required this.id});
+  ToolStartEvent({required this.name, required this.id});
 }
 
 class ToolResultEvent extends ChatEvent {
   final String name, content;
   final bool isError;
-  const ToolResultEvent({
+  ToolResultEvent({
     required this.name,
     required this.content,
     required this.isError,
@@ -372,20 +378,24 @@ class ToolResultEvent extends ChatEvent {
 
 class UsageEvent extends ChatEvent {
   final int inputTokens, outputTokens;
-  const UsageEvent({required this.inputTokens, required this.outputTokens});
+  UsageEvent({required this.inputTokens, required this.outputTokens});
 }
 
 class StopEvent extends ChatEvent {
   final String reason;
-  const StopEvent(this.reason);
+  StopEvent(this.reason);
 }
 
 class ErrorEvent extends ChatEvent {
   final String message;
-  const ErrorEvent(this.message);
+  ErrorEvent(this.message);
 }
 
 class DoneEvent extends ChatEvent {
   final int turns;
-  const DoneEvent(this.turns);
+  DoneEvent(this.turns);
 }
+
+/// The resume cursor predates the server's journal window: refetch session
+/// history, then keep consuming the stream.
+class ResetEvent extends ChatEvent {}

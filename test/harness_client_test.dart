@@ -199,23 +199,56 @@ void main() {
             'event-stream',
           );
           req.response.write(
+            'id: 1\n'
             'event: ready\n'
             'data: {"profile":"personal","session":"app","provider":"kimi","model":""}\n\n'
+            'id: 2\n'
             'event: route\n'
             'data: {"model":"kimi-k2.6","tier":"reasoning"}\n\n'
+            'id: 3\n'
             'event: text\n'
             'data: {"delta":"hel"}\n\n'
+            'id: 4\n'
             'event: text\n'
             'data: {"delta":"lo"}\n\n'
+            'id: 5\n'
             'event: tool_start\n'
             'data: {"name":"web_search","id":"x"}\n\n'
+            'id: 6\n'
             'event: usage\n'
             'data: {"InputTokens":10,"OutputTokens":5,"CacheRead":0,"CacheWrite":0}\n\n'
+            'id: 7\n'
             'event: stop\n'
             'data: {"reason":"end_turn"}\n\n'
+            'id: 8\n'
             'event: done\n'
             'data: {"turns":2}\n\n',
           );
+        case 'GET /v1/chat/stream':
+          lastChatBody = jsonEncode(req.uri.queryParameters);
+          req.response.headers.contentType = ContentType(
+            'text',
+            'event-stream',
+          );
+          if (req.uri.queryParameters['after'] == '99') {
+            // Cursor fell out of the journal window: reset, then the tail.
+            req.response.write(
+              'event: reset\n'
+              'data: {}\n\n'
+              'id: 120\n'
+              'event: done\n'
+              'data: {"turns":4}\n\n',
+            );
+          } else {
+            req.response.write(
+              'id: 6\n'
+              'event: text\n'
+              'data: {"delta":"resumed"}\n\n'
+              'id: 7\n'
+              'event: done\n'
+              'data: {"turns":3}\n\n',
+            );
+          }
         default:
           req.response.statusCode = 404;
       }
@@ -294,6 +327,33 @@ void main() {
       'media_type': 'image/png',
       'data': 'aGk=',
     });
+  });
+
+  test('chat surfaces seq from id: lines', () async {
+    final events = await client.chat(message: 'hi', session: 'app').toList();
+    expect(events.first, isA<ReadyEvent>());
+    expect(events.first.seq, 1);
+    expect(events.whereType<DoneEvent>().single.seq, 8);
+  });
+
+  test('resume hits /v1/chat/stream with after and streams the tail', () async {
+    final events = await client
+        .resume(session: 'app', profile: 'personal', after: 5)
+        .toList();
+    expect(jsonDecode(lastChatBody!), {
+      'session': 'app',
+      'profile': 'personal',
+      'after': '5',
+    });
+    expect(events.whereType<TextDeltaEvent>().single.delta, 'resumed');
+    expect(events.whereType<TextDeltaEvent>().single.seq, 6);
+    expect(events.whereType<DoneEvent>().single.turns, 3);
+  });
+
+  test('resume past the journal window yields ResetEvent first', () async {
+    final events = await client.resume(session: 'app', after: 99).toList();
+    expect(events.first, isA<ResetEvent>());
+    expect(events.whereType<DoneEvent>().single.seq, 120);
   });
 
   test('deliveries feed, read markers, feedback lesson', () async {
