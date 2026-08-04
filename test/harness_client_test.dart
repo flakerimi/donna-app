@@ -187,6 +187,16 @@ void main() {
               'url': 'https://accounts.google.com/o/oauth2/v2/auth?state=abc',
             }),
           );
+        case 'POST /v1/auth/claude/start':
+          req.response.write(
+            jsonEncode({
+              'url': 'https://claude.ai/oauth/authorize?state=st1',
+              'state': 'st1',
+            }),
+          );
+        case 'POST /v1/auth/claude/complete':
+          lastChatBody = await utf8.decodeStream(req);
+          req.response.write(jsonEncode({'connected': true}));
         case 'POST /v1/push/register':
           lastChatBody = await utf8.decodeStream(req);
           req.response.write(
@@ -395,6 +405,22 @@ void main() {
     expect(list.single.connected, isTrue);
     final url = await client.googleConnectUrl(profile: 'personal');
     expect(url, contains('accounts.google.com'));
+  });
+
+  test('claude auth start + complete', () async {
+    final start = await client.claudeAuthStart(profile: 'personal');
+    expect(start.url, contains('claude.ai/oauth/authorize'));
+    expect(start.state, 'st1');
+    await client.claudeAuthComplete(
+      code: 'abc#st1',
+      state: 'st1',
+      profile: 'personal',
+    );
+    expect(jsonDecode(lastChatBody!), {
+      'code': 'abc#st1',
+      'state': 'st1',
+      'profile': 'personal',
+    });
   });
 
   test('push registration posts token, platform, profile', () async {

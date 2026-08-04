@@ -197,6 +197,44 @@ class HarnessClient {
     return j['url'] as String? ?? '';
   }
 
+  /// POST /v1/auth/claude/start — mint the Claude authorize URL for the
+  /// paste-code flow; the PKCE verifier stays on the server, keyed by state.
+  Future<({String url, String state})> claudeAuthStart({
+    String? profile,
+  }) async {
+    final res = await _http.post(
+      _u('/v1/auth/claude/start'),
+      headers: {..._auth, 'Content-Type': 'application/json'},
+      body: jsonEncode({
+        if (profile != null && profile.isNotEmpty) 'profile': profile,
+      }),
+    );
+    final j = jsonDecode(_check(res)) as Map<String, dynamic>;
+    return (
+      url: j['url'] as String? ?? '',
+      state: j['state'] as String? ?? '',
+    );
+  }
+
+  /// POST /v1/auth/claude/complete — exchange the pasted code; the server
+  /// persists the credentials and the claude provider starts working.
+  Future<void> claudeAuthComplete({
+    required String code,
+    required String state,
+    String? profile,
+  }) async {
+    final res = await _http.post(
+      _u('/v1/auth/claude/complete'),
+      headers: {..._auth, 'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'code': code,
+        'state': state,
+        if (profile != null && profile.isNotEmpty) 'profile': profile,
+      }),
+    );
+    _check(res);
+  }
+
   /// POST /v1/push/register — bind this device's APNs token to an identity so
   /// scheduled deliveries targeted `push:<profile>` reach it.
   Future<void> registerPush({required String token, String? profile}) async {

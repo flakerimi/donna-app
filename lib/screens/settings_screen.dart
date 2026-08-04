@@ -81,6 +81,73 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  /// Claude connects via paste-code: the browser opens Anthropic's consent
+  /// page, which ends on a code the user copies back into a dialog here (the
+  /// deployed server has no reachable localhost callback).
+  Future<void> _connectClaude() async {
+    final state = AppScope.of(context);
+    try {
+      final start = await state.client!.claudeAuthStart(profile: state.profile);
+      if (start.url.isEmpty) throw Exception('server returned no authorize URL');
+      await launchUrl(Uri.parse(start.url), mode: LaunchMode.externalApplication);
+      if (!mounted) return;
+      final code = await showDialog<String>(
+        context: context,
+        builder: (context) {
+          final controller = TextEditingController();
+          return AlertDialog(
+            title: const Text('Paste the code'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'After you approve in the browser, Claude shows a code. Paste it here.',
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: controller,
+                  autofocus: true,
+                  decoration: const InputDecoration(
+                    hintText: 'code…',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(context, controller.text.trim()),
+                child: const Text('Connect'),
+              ),
+            ],
+          );
+        },
+      );
+      if (code == null || code.isEmpty || !mounted) return;
+      await state.client!.claudeAuthComplete(
+        code: code,
+        state: start.state,
+        profile: state.profile,
+      );
+      await _loadConnectors();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Claude connected ✓')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Claude connect failed: $e')));
+      }
+    }
+  }
+
   Future<void> _checkHealth() async {
     setState(() => _health = '…');
     try {
@@ -189,20 +256,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
-                trailing: c.name == 'google'
-                    ? (_awaitingConsent
-                          ? const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : TextButton(
-                              onPressed: _connectGoogle,
-                              child: Text(
-                                c.connected ? 'Reconnect' : 'Connect',
-                              ),
-                            ))
-                    : null,
+                trailing: switch (c.name) {
+                  'google' =>
+                    _awaitingConsent
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : TextButton(
+                            onPressed: _connectGoogle,
+                            child: Text(c.connected ? 'Reconnect' : 'Connect'),
+                          ),
+                  'claude' => TextButton(
+                    onPressed: _connectClaude,
+                    child: Text(c.connected ? 'Reconnect' : 'Connect'),
+                  ),
+                  _ => null,
+                },
               ),
           ListTile(
             leading: const Icon(Icons.refresh),
