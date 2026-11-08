@@ -7,9 +7,10 @@ against any harness server, not only Donna: enter a server URL and an API
 token on the connect screen and the rest follows.
 
 The name comes from Donna Paulsen in the TV series *Suits*, the assistant who
-knows everything before anyone asks. The [Donna](https://github.com/flakerimi/donna)
-repository explains the persona; this one is the phone in your pocket that she
-answers on.
+knows everything before anyone asks. It is a fan project, not affiliated with
+the show; the icon is a still of the character, and it goes if a rights holder
+asks. The [Donna](https://github.com/flakerimi/donna) repository explains the
+persona; this one is the phone in your pocket that she answers on.
 
 ## What is in it
 
