@@ -6,6 +6,11 @@ engine. It is a Flutter client for the engine's HTTP and SSE API, so it works
 against any harness server, not only Donna: enter a server URL and an API
 token on the connect screen and the rest follows.
 
+The name comes from Donna Paulsen in the TV series *Suits*, the assistant who
+knows everything before anyone asks. The [Donna](https://github.com/flakerimi/donna)
+repository explains the persona; this one is the phone in your pocket that she
+answers on.
+
 ## What is in it
 
 - **Chat** that streams the answer as it is written, shows tool calls as they
